@@ -18,5 +18,5 @@ layout = html.Div([
         dcc.Dropdown(id="details-symbol-dropdown", options=[{"label": s, "value": s} for s in symbols], multi=False)
     ]),
     html.Div(id="quantstats-metrics"),
-    dcc.Graph(id="quantstats-performance-graph")
+    html.Div(id="quantstats-report")
 ])
