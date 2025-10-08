@@ -4,30 +4,47 @@ import dash
 from dash.dependencies import Input, Output
 from dashboard.data_loader import load_returns
 from dash import html
-import plotly.graph_objects as go
 import quantstats.reports as qsr
+import tempfile
+import os
 
 @dash.callback(
-    [Output("quantstats-metrics", "children"),
-     Output("quantstats-performance-graph", "figure")],
-    [Input("details-strategy-dropdown", "value"),
-     Input("details-symbol-dropdown", "value")]
+    Output("quantstats-report-container", "children"),
+    [
+        Input("details-strategy-dropdown", "value"),
+        Input("details-symbol-dropdown", "value"),
+    ],
 )
 def update_details(strategy, symbol):
     if not strategy or not symbol:
-        return dash.no_update, dash.no_update
+        return dash.no_update
 
     returns = load_returns(symbol, strategy)
     if returns.empty:
-        return "Keine Daten verfügbar.", go.Figure()
+        return html.Div("Keine Daten verfügbar.")
 
-    stats_df = qsr.metrics(returns, display=False)
-    metrics_html = stats_df.to_html()
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp_file:
+        temp_path = tmp_file.name
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=returns.index, y=(1 + returns).cumprod(), mode='lines', name='Kumulierte Rendite'))
-    fig.update_layout(title=f"Kumulierte Rendite: {symbol} - {strategy}", xaxis_title="Datum", yaxis_title="Wert")
+    try:
+        qsr.html(
+            returns,
+            output=temp_path,
+            title=f"QuantStats Report: {strategy} - {symbol}",
+            download_filename=f"quantstats-{strategy}-{symbol}.html",
+            strategy_title=strategy,
+        )
+        with open(temp_path, "r", encoding="utf-8") as f:
+            report_html = f.read()
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
-    return html.Div([
-        html.Iframe(srcDoc=metrics_html, style={"width": "100%", "height": "400px", "border": "none"})
-    ]), fig
+    return html.Iframe(
+        srcDoc=report_html,
+        style={
+            "width": "100%",
+            "height": "2000px",
+            "border": "none",
+        },
+    )

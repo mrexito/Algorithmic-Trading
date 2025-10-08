@@ -11,12 +11,19 @@ layout = html.Div([
     html.H2("Strategiedetails"),
     html.Div([
         html.Label("Wähle eine Strategie:"),
-        dcc.Dropdown(id="details-strategy-dropdown", options=[{"label": s, "value": s} for s in strategies], multi=False)
+        dcc.Dropdown(
+            id="details-strategy-dropdown",
+            options=[{"label": s, "value": s} for s in strategies],
+            multi=False,
+        ),
     ]),
     html.Div([
         html.Label("Wähle ein Symbol:"),
-        dcc.Dropdown(id="details-symbol-dropdown", options=[{"label": s, "value": s} for s in symbols], multi=False)
+        dcc.Dropdown(
+            id="details-symbol-dropdown",
+            options=[{"label": s, "value": s} for s in symbols],
+            multi=False,
+        ),
     ]),
-    html.Div(id="quantstats-metrics"),
-    dcc.Graph(id="quantstats-performance-graph")
+    html.Div(id="quantstats-report-container"),
 ])
