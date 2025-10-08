@@ -1,14 +1,22 @@
 # ==================== dashboard/callbacks/tab2_details_callbacks.py ====================
 
+import base64
+import io
 import os
 import tempfile
+
 import dash
 from dash import html
 from dash.dependencies import Input, Output
-import pandas as pd
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import quantstats.reports as qsr
-from dashboard.data_loader import load_returns
+
+from dashboard.data_loader import get_benchmark_returns, load_returns
 
 
 # beim Start die Versionen ausgeben (nur zur Kontrolle)
@@ -18,38 +26,40 @@ print(f"[QS-Env] pandas={_pd.__version__} quantstats={_qs.__version__} numpy={_n
 
 def _normalize_returns(x: pd.Series | pd.DataFrame) -> pd.Series:
     """Bringt Equity- oder Return-Daten in taegliche einfache Renditen-Form fuer QuantStats."""
-    s = x
-    if isinstance(s, pd.DataFrame):
-        for c in ["returns", "ret", "r", "daily_return", "strategy_return"]:
-            if c in s.columns:
-                s = s[c]
+
+    series = x
+    if isinstance(series, pd.DataFrame):
+        for column in ["returns", "ret", "r", "daily_return", "strategy_return"]:
+            if column in series.columns:
+                series = series[column]
                 break
         else:
-            s = s.iloc[:, 0]
+            series = series.iloc[:, 0]
 
-    if not isinstance(s.index, pd.DatetimeIndex):
-        s.index = pd.to_datetime(s.index, errors="coerce")
-    s = s.sort_index()
+    series = pd.Series(series).copy()
+    if not isinstance(series.index, pd.DatetimeIndex):
+        series.index = pd.to_datetime(series.index, errors="coerce")
+    series = series.dropna().sort_index()
 
-    # Equity-Kurve -> Renditen
-    if s.min() >= 0 and s.max() > 2:
-        s = s.pct_change()
+    values = pd.to_numeric(series, errors="coerce")
+    values = values.dropna()
 
-    # pro Kalendertag aggregieren
-    s = s.groupby(s.index.normalize()).apply(lambda v: (1 + v).prod() - 1)
+    if values.empty:
+        return pd.Series(dtype=float, name="returns")
 
-    # aufraeumen
-    s = s.astype(float).replace([np.inf, -np.inf], np.nan).dropna()
+    # Equity-Kurve zu Renditen umwandeln
+    if values.min() >= 0 and values.max() > 2:
+        values = values.pct_change().fillna(0.0)
 
-    # Tagesfrequenz erzwingen
-    s = s.asfreq("D").fillna(0.0)
+    returns = values.groupby(values.index.normalize()).apply(lambda v: (1.0 + v).prod() - 1.0)
+    returns = returns.astype(float).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    returns = returns.asfreq("D", fill_value=0.0)
     try:
-        s.index.freq = pd.tseries.offsets.Day()
+        returns.index.freq = pd.tseries.frequencies.to_offset("D")
     except Exception:
         pass
-
-    s.name = "returns"
-    return s
+    returns.name = "returns"
+    return returns
 
 
 @dash.callback(
@@ -80,32 +90,52 @@ def update_details(strategy, symbol):
         )
     ])
 
-    # 2️⃣ Vollstaendiger QuantStats-HTML-Report
+    benchmark_returns = get_benchmark_returns("^SSMI", returns.index)
+
+    # 2️⃣ Vollstaendiger QuantStats-HTML-Report mit Benchmark-Fallback
     tmp_path = None
+    report_children: list = []
     try:
         fd, tmp_path = tempfile.mkstemp(suffix=".html")
         os.close(fd)
 
-        qsr.html(
-              returns,
-             # benchmark="SPY",  # <-- entfernen / auskommentieren
-            output=tmp_path,
-            title=f"Strategie Tearsheet: {strategy} - {symbol}",
-            download_filename="quantstats_report.html",
-           )   
+        try:
+            if benchmark_returns is not None and not benchmark_returns.empty:
+                qsr.html(
+                    returns,
+                    benchmark=benchmark_returns,
+                    output=tmp_path,
+                    title=f"Strategie Tearsheet: {strategy} - {symbol}",
+                    download_filename="quantstats_report.html",
+                )
+            else:
+                qsr.html(
+                    returns,
+                    output=tmp_path,
+                    title=f"Strategie Tearsheet: {strategy} - {symbol}",
+                    download_filename="quantstats_report.html",
+                )
+        except Exception:
+            qsr.html(
+                returns,
+                output=tmp_path,
+                title=f"Strategie Tearsheet: {strategy} - {symbol}",
+                download_filename="quantstats_report.html",
+            )
 
         with open(tmp_path, "r", encoding="utf-8") as f:
             report_html = f.read()
 
-        report_content = html.Div([
+        report_children.append(
             html.Iframe(
                 srcDoc=report_html,
                 style={"width": "100%", "height": "1800px", "border": "none"},
             )
-        ])
+        )
 
     except Exception as err:
         import pandas as pd, quantstats as qs, numpy as np
+
         dbg = [
             f"pandas={pd.__version__}",
             f"quantstats={qs.__version__}",
@@ -114,13 +144,52 @@ def update_details(strategy, symbol):
             f"freq={getattr(returns.index, 'freq', None)}",
             f"head=\n{returns.head().to_string()}",
         ]
-        report_content = html.Div([
+        report_children = [
             html.P("Fehler beim Laden des QuantStats-Reports."),
             html.Pre(str(err)),
             html.Pre("\n".join(dbg)),
-        ])
+        ]
     finally:
-        if tmp_path and os.path.exists(tmp_path):
+        if tmp_path and tmp_path.startswith(tempfile.gettempdir()) and os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+    # 3️⃣ Equity-Vergleich als eingebettetes Bild
+    if benchmark_returns is not None and not benchmark_returns.empty:
+        try:
+            aligned_returns = benchmark_returns.reindex(returns.index, fill_value=0.0)
+            strategy_equity = (1.0 + returns).cumprod()
+            benchmark_equity = (1.0 + aligned_returns).cumprod()
+
+            fig, ax = plt.subplots(figsize=(10, 4.5))
+            ax.plot(strategy_equity.index, strategy_equity.values, label=f"Strategie {strategy}")
+            ax.plot(benchmark_equity.index, benchmark_equity.values, label="Benchmark ^SSMI")
+            ax.set_title("Equity-Vergleich Strategie vs. ^SSMI")
+            ax.set_xlabel("Datum")
+            ax.set_ylabel("Equity (Startwert = 1.0)")
+            ax.grid(True, which="major", linestyle=":", linewidth=0.7)
+            ax.legend()
+            fig.tight_layout()
+
+            buffer = io.BytesIO()
+            fig.savefig(buffer, format="png", dpi=150)
+            plt.close(fig)
+            buffer.seek(0)
+            encoded = base64.b64encode(buffer.read()).decode("ascii")
+            image_uri = f"data:image/png;base64,{encoded}"
+
+            report_children.append(
+                html.Div(
+                    [
+                        html.H4("Equity-Vergleich"),
+                        html.Img(src=image_uri, style={"width": "100%", "maxWidth": "960px"}),
+                    ],
+                    style={"marginTop": "24px", "textAlign": "center"},
+                )
+            )
+        except Exception:
+            # Plot optional, Fehler werden bewusst verschluckt
+            pass
+
+    report_content = html.Div(report_children)
 
     return metrics_content, report_content
