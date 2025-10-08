@@ -3,6 +3,7 @@ plotly
 pandas
 backtrader
 quantstats
+ipython
 scikit-learn
 fastdtw
 scipy
