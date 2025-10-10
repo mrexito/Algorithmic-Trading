@@ -1,14 +1,30 @@
-quantstats==0.0.62
+# =========================================
+# Project: Trading Dashboard (Donat / DIFA)
+# Python version: 3.11.9
+# =========================================
+
+# Core Scientific Stack
 pandas==2.1.4
-numpy<2.0.0
-matplotlib>=3.7
-seaborn>=0.9.0
-scipy>=1.2.0
-tabulate>=0.8.0
-yfinance>=0.1.70
-plotly>=3.4.1
-dash
-backtrader
-scikit-learn
-fastdtw
-ipython
+numpy==1.26.4
+scipy==1.16.2
+
+# Visualization & Dashboard
+matplotlib==3.10.6
+seaborn==0.13.2
+plotly==6.3.1
+dash==3.2.0
+
+# Data & Markets
+yfinance==0.2.66
+backtrader==1.9.78.123
+tabulate==0.9.0
+
+# Performance / Analytics
+quantstats==0.0.62
+fastdtw==0.3.4
+
+# Machine Learning
+scikit-learn==1.7.2
+
+# Dev / CLI
+ipython==9.6.0
