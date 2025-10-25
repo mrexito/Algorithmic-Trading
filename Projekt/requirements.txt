@@ -28,3 +28,4 @@ scikit-learn==1.7.2
 
 # Dev / CLI
 ipython==9.6.0
+flake8==7.1.1
