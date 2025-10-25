@@ -1,5 +1,6 @@
 import backtrader as bt
 
+
 class BollingerStrategy(bt.Strategy):
     params = dict(period=20, devfactor=2.0)
 
@@ -18,7 +19,7 @@ class BollingerStrategy(bt.Strategy):
         # Kaufsignal: Schlusskurs unter dem unteren Band
         if not self.position and self.datas[0].close[0] < self.bbands.bot[0]:
             self.order = self.buy()
-        
+
         # Verkaufssignal: Schlusskurs über mittlerem Band (SMA)
         elif self.position and self.datas[0].close[0] > self.bbands.mid[0]:
             self.order = self.close()

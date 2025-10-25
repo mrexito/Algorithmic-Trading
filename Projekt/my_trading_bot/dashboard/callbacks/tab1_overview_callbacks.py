@@ -8,6 +8,7 @@ import plotly.graph_objs as go
 import quantstats.stats as qs_stats
 import pandas as pd
 
+
 @dash.callback(
     [Output("performance-table", "children"),
      Output("overview-comparison-graph", "figure")],

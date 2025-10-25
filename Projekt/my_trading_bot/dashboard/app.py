@@ -25,6 +25,7 @@ app.layout = html.Div([
     html.Div(id="tabs-content")
 ])
 
+
 @app.callback(
     dash.dependencies.Output('tabs-content', 'children'),
     [dash.dependencies.Input('tabs', 'value')]
@@ -36,6 +37,7 @@ def render_tab_content(tab):
         return tab2_details_layout.layout
     elif tab == 'tab3':
         return tab3_descriptions_layout.layout
+
 
 if __name__ == '__main__':
     from dashboard.callbacks import tab1_overview_callbacks, tab2_details_callbacks, tab3_descriptions_callbacks

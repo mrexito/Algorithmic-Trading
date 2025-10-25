@@ -1,5 +1,6 @@
 import backtrader as bt
 
+
 class DummyStrategy(bt.Strategy):
     def __init__(self):
         self.counter = 0

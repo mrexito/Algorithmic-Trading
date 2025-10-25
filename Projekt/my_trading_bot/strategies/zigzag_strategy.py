@@ -1,5 +1,6 @@
 import backtrader as bt
 
+
 class ZigZagStrategy(bt.Strategy):
     params = dict(perc=5)
 

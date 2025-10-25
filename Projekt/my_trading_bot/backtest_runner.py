@@ -18,6 +18,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULT_DIR = os.path.join(BASE_DIR, "results")
 DATA_DIR = os.path.join(BASE_DIR, "data", "historical_prices")
 
+
 def run_backtests():
     strategies = {
         "MACD": MACDStrategy,
@@ -42,7 +43,7 @@ def run_backtests():
             data = bt.feeds.PandasData(dataname=df)
             cerebro.adddata(data)
             cerebro.addstrategy(strat_class)
-            #Batch Size anpassen bei Bedarf aktuell 10%-> 10% des Kapitals pro Trade
+            # Batch Size anpassen bei Bedarf aktuell 10% -> 10% des Kapitals pro Trade
             cerebro.addsizer(bt.sizers.PercentSizer, percents=5)
             cerebro.broker.set_cash(CAPITAL)
             cerebro.broker.setcommission(commission=COMMISSION)
@@ -55,6 +56,7 @@ def run_backtests():
             filename = f"{strat_name}_{symbol}_returns.pkl"
             with open(os.path.join(RESULT_DIR, filename), "wb") as f:
                 pickle.dump(returns_series, f)
+
 
 if __name__ == "__main__":
     run_backtests()

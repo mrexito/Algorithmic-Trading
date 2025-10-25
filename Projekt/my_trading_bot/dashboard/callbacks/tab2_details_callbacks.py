@@ -7,18 +7,13 @@ from dash import html
 from dash.dependencies import Input, Output
 import pandas as pd
 import numpy as np
+import quantstats.reports as qsr
+from dashboard.data_loader import load_returns
+import quantstats as qs
 
 # QuantStats internally invokes matplotlib; force a headless backend to avoid macOS GUI/thread issues.
 import matplotlib
 matplotlib.use("Agg")
-
-import quantstats.reports as qsr
-from dashboard.data_loader import load_returns
-
-
-# beim Start die Versionen ausgeben (nur zur Kontrolle)
-import pandas as _pd, quantstats as _qs, numpy as _np
-print(f"[QS-Env] pandas={_pd.__version__} quantstats={_qs.__version__} numpy={_np.__version__}")
 
 
 def _normalize_returns(x: pd.Series | pd.DataFrame) -> pd.Series:
@@ -115,7 +110,6 @@ def update_details(strategy, symbol):
         ])
 
     except Exception as err:
-        import pandas as pd, quantstats as qs, numpy as np
         dbg = [
             f"pandas={pd.__version__}",
             f"quantstats={qs.__version__}",

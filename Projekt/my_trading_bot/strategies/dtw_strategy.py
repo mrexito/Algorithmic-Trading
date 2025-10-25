@@ -2,6 +2,7 @@ import backtrader as bt
 import numpy as np
 from dtaidistance import dtw
 
+
 class DTWStrategy(bt.Strategy):
     params = dict(window=20, threshold=5.0)
 

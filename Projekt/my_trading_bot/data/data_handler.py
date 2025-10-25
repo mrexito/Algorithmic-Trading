@@ -1,11 +1,12 @@
 import os
 import yfinance as yf
-import pandas as pd
+# import pandas as pd
+from config.settings import PREDEFINED_SYMBOLS
+
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data", "historical_prices")
 
-from config.settings import PREDEFINED_SYMBOLS
 
 def download_and_save_data():
     os.makedirs(DATA_DIR, exist_ok=True)

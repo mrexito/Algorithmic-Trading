@@ -3,6 +3,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 
+
 class AIStrategy(bt.Strategy):
     params = dict(train_period=200, prob_threshold=0.55)
 

@@ -1,5 +1,6 @@
 import backtrader as bt
 
+
 class HorizontalPatternStrategy(bt.Strategy):
     params = dict(
         lookback=20,

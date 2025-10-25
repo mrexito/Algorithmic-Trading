@@ -5,6 +5,7 @@ import pandas as pd
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULT_DIR = os.path.join(BASE_DIR, "results")
 
+
 def get_available_results():
     files = [f for f in os.listdir(RESULT_DIR) if f.endswith("_returns.pkl")]
     combos = []
@@ -13,6 +14,7 @@ def get_available_results():
         strat, symbol = name.split("_")
         combos.append((symbol, strat))
     return combos
+
 
 def load_returns(symbol, strategy):
     file_path = os.path.join(RESULT_DIR, f"{strategy}_{symbol}_returns.pkl")

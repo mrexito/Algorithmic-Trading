@@ -1,5 +1,6 @@
 import backtrader as bt
 
+
 class RSIStrategy(bt.Strategy):
     def __init__(self):
         self.rsi = bt.indicators.RSI_SMA(self.data.close, period=14)

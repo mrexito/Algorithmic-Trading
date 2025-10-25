@@ -3,8 +3,6 @@
 import os
 from dash import Output, Input
 from dash import callback
-import dash
-from dash import html
 from dash import dcc
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

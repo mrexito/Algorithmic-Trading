@@ -1,5 +1,6 @@
 import backtrader as bt
 
+
 class MACDStrategy(bt.Strategy):
     def __init__(self):
         macd = bt.indicators.MACD()
