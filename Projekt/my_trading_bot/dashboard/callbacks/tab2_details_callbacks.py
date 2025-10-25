@@ -7,6 +7,11 @@ from dash import html
 from dash.dependencies import Input, Output
 import pandas as pd
 import numpy as np
+
+# QuantStats internally invokes matplotlib; force a headless backend to avoid macOS GUI/thread issues.
+import matplotlib
+matplotlib.use("Agg")
+
 import quantstats.reports as qsr
 from dashboard.data_loader import load_returns
 
@@ -71,7 +76,12 @@ def update_details(strategy, symbol):
         return html.Div("Keine Daten verfügbar."), html.Div()
 
     # 1️⃣ QuantStats-Metriken (Tabelle)
-    stats_df = qsr.metrics(returns, display=False, mode="full")
+    stats_df = qsr.metrics(
+        returns,
+        display=False,
+        mode="full",
+        benchmark=None,  # prevent QuantStats from fetching SPY over the network
+    )
     metrics_html = stats_df.to_html()
     metrics_content = html.Div([
         html.Iframe(
@@ -87,12 +97,12 @@ def update_details(strategy, symbol):
         os.close(fd)
 
         qsr.html(
-              returns,
-             # benchmark="SPY",  # <-- entfernen / auskommentieren
+            returns,
+            benchmark=None,  # ensure no external benchmark download occurs
             output=tmp_path,
             title=f"Strategie Tearsheet: {strategy} - {symbol}",
             download_filename="quantstats_report.html",
-           )   
+        )
 
         with open(tmp_path, "r", encoding="utf-8") as f:
             report_html = f.read()
