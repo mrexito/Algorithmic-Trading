@@ -1,4 +1,5 @@
 # ==================== dashboard/callbacks/tab3_descriptions_callbacks.py ====================
+"""Callbacks that load markdown descriptions for the selected strategy."""
 
 import os
 from dash import Output, Input
@@ -14,6 +15,7 @@ DOC_DIR = os.path.join(BASE_DIR, "docs", "strategy_descriptions")
     Input("description-strategy-dropdown", "value")
 )
 def update_strategy_description(strategy_name):
+    """Load and render the markdown description for the requested strategy."""
     if not strategy_name:
         return "Bitte wähle eine Strategie aus dem Dropdown-Menü aus."
 

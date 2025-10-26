@@ -1,3 +1,5 @@
+"""Data download utilities for fetching and caching historical price series."""
+
 import os
 import yfinance as yf
 # import pandas as pd
@@ -9,6 +11,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data", "historical_prices")
 
 
 def download_and_save_data():
+    """Fetch historical OHLCV data for each predefined symbol and store it as CSV."""
     os.makedirs(DATA_DIR, exist_ok=True)
     for symbol in PREDEFINED_SYMBOLS:
         df = yf.download(symbol, start="2015-01-01", end="2025-06-30")

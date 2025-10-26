@@ -1,3 +1,5 @@
+"""Layout for the overview tab that compares strategies across symbols."""
+
 from dash import html, dcc
 from dashboard.data_loader import get_available_results
 

@@ -1,14 +1,20 @@
+"""ZigZag-based breakout strategy that reacts to percentage swings."""
+
 import backtrader as bt
 
 
 class ZigZagStrategy(bt.Strategy):
+    """Track pivots and trade when price reversals exceed a configurable threshold."""
+
     params = dict(perc=5)
 
     def __init__(self):
+        """Initialize pivot tracking state."""
         self.last_pivot = None
         self.direction = None  # "up" oder "down"
 
     def next(self):
+        """Open or close trades based on percentage moves relative to the last pivot."""
         price = self.data.close[0]
 
         if self.last_pivot is None:

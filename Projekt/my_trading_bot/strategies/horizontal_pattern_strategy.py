@@ -1,7 +1,11 @@
+"""Range-trading strategy that looks for horizontal support/resistance bounces."""
+
 import backtrader as bt
 
 
 class HorizontalPatternStrategy(bt.Strategy):
+    """Buy near recent lows with supporting momentum and exit on TP/SL touches."""
+
     params = dict(
         lookback=20,
         stop_loss=0.03,        # 3% Stop-Loss
@@ -9,6 +13,7 @@ class HorizontalPatternStrategy(bt.Strategy):
     )
 
     def __init__(self):
+        """Precompute indicators used for detecting range conditions."""
         self.order = None
         self.buy_price = None
 
@@ -20,6 +25,7 @@ class HorizontalPatternStrategy(bt.Strategy):
         self.ma_long = bt.ind.SMA(self.data.close, period=50)
 
     def next(self):
+        """Issue buy/sell orders when the horizontal pattern criteria are met."""
         if self.order:
             return  # warte, bis die Order ausgeführt wurde
 

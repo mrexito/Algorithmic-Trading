@@ -1,3 +1,5 @@
+"""Utility entry point for executing all strategies and storing their returns."""
+
 import os
 import pickle
 import pandas as pd
@@ -20,6 +22,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data", "historical_prices")
 
 
 def run_backtests():
+    """Run every registered strategy over each symbol and persist cumulative returns."""
     strategies = {
         "MACD": MACDStrategy,
         "RSI": RSIStrategy,

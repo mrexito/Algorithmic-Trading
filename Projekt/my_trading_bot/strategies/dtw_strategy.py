@@ -1,15 +1,21 @@
+"""Dynamic Time Warping strategy that matches price paths to reference patterns."""
+
 import backtrader as bt
 import numpy as np
 from dtaidistance import dtw
 
 
 class DTWStrategy(bt.Strategy):
+    """Enter trades when recent windows resemble up or down reference paths."""
+
     params = dict(window=20, threshold=5.0)
 
     def __init__(self):
+        """Store a reference to the close series for repeated window extraction."""
         self.dataclose = self.datas[0].close
 
     def next(self):
+        """Compare the latest window with templates and trade when similarity is high."""
         if len(self.dataclose) <= self.p.window:
             return
 

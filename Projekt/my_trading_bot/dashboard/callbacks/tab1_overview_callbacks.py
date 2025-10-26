@@ -1,4 +1,5 @@
 # ==================== dashboard/callbacks/tab1_overview_callbacks.py ====================
+"""Callbacks powering the overview tab with metrics table and return curves."""
 
 import dash
 from dash.dependencies import Input, Output
@@ -16,6 +17,7 @@ import pandas as pd
      Input("overview-strategy-dropdown", "value")]
 )
 def update_overview_tab(selected_symbols, selected_strategies):
+    """Render performance table and cumulative plots for the selected filters."""
     if not selected_symbols or not selected_strategies:
         return dash.no_update, dash.no_update
 

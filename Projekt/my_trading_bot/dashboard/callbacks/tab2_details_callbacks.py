@@ -1,4 +1,5 @@
 # ==================== dashboard/callbacks/tab2_details_callbacks.py ====================
+"""Callbacks for the details tab that render QuantStats metrics and reports."""
 
 import os
 import tempfile
@@ -17,7 +18,7 @@ matplotlib.use("Agg")
 
 
 def _normalize_returns(x: pd.Series | pd.DataFrame) -> pd.Series:
-    """Bringt Equity- oder Return-Daten in taegliche einfache Renditen-Form fuer QuantStats."""
+    """Convert equity or return inputs into daily simple returns for QuantStats."""
     s = x
     if isinstance(s, pd.DataFrame):
         for c in ["returns", "ret", "r", "daily_return", "strategy_return"]:
@@ -59,6 +60,7 @@ def _normalize_returns(x: pd.Series | pd.DataFrame) -> pd.Series:
      Input("details-symbol-dropdown", "value")]
 )
 def update_details(strategy, symbol):
+    """Render QuantStats metrics table and report for the selected strategy/symbol."""
     if not strategy or not symbol:
         return dash.no_update, dash.no_update
 

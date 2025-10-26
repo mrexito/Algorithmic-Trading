@@ -1,3 +1,5 @@
+"""Machine-learning driven strategy using logistic regression on RSI/SMA features."""
+
 import backtrader as bt
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import MinMaxScaler
@@ -5,9 +7,12 @@ import numpy as np
 
 
 class AIStrategy(bt.Strategy):
+    """Train a lightweight classifier on rolling window features to drive trades."""
+
     params = dict(train_period=200, prob_threshold=0.55)
 
     def __init__(self):
+        """Instantiate indicators, scaler, and classifier used for online training."""
         self.dataclose = self.datas[0].close
         self.rsi = bt.indicators.RSI_SMA(self.dataclose, period=14)
         self.sma = bt.indicators.SimpleMovingAverage(self.dataclose, period=14)
@@ -17,6 +22,7 @@ class AIStrategy(bt.Strategy):
         self.y = []
 
     def next(self):
+        """Retrain the classifier on recent data and trade when predicted odds align."""
         if len(self) < self.p.train_period + 1:
             return
 

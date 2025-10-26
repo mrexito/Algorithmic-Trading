@@ -1,3 +1,5 @@
+"""Dash application entry point wiring layouts and callbacks together."""
+
 import os
 import sys
 
@@ -31,6 +33,7 @@ app.layout = html.Div([
     [dash.dependencies.Input('tabs', 'value')]
 )
 def render_tab_content(tab):
+    """Return the layout for the currently selected dashboard tab."""
     if tab == 'tab1':
         return tab1_overview_layout.layout
     elif tab == 'tab2':

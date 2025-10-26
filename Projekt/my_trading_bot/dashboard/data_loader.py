@@ -1,3 +1,5 @@
+"""Helper utilities for listing result files and loading serialized return series."""
+
 import os
 import pickle
 import pandas as pd
@@ -7,6 +9,7 @@ RESULT_DIR = os.path.join(BASE_DIR, "results")
 
 
 def get_available_results():
+    """Return all (symbol, strategy) combinations that have stored backtest results."""
     files = [f for f in os.listdir(RESULT_DIR) if f.endswith("_returns.pkl")]
     combos = []
     for f in files:
@@ -17,6 +20,7 @@ def get_available_results():
 
 
 def load_returns(symbol, strategy):
+    """Load the pickled return series for a given symbol/strategy pairing."""
     file_path = os.path.join(RESULT_DIR, f"{strategy}_{symbol}_returns.pkl")
     if os.path.exists(file_path):
         with open(file_path, "rb") as f:

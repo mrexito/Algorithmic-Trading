@@ -1,4 +1,5 @@
 # ==================== dashboard/layouts/tab3_descriptions_layout.py ====================
+"""Layout and helpers for browsing markdown strategy descriptions."""
 
 import os
 from dash import html, dcc
@@ -8,6 +9,7 @@ DOC_DIR = os.path.join(BASE_DIR, "docs", "strategy_descriptions")
 
 
 def get_available_strategies():
+    """Return strategy identifiers for which a markdown description exists."""
     if not os.path.exists(DOC_DIR):
         return []
     files = [f for f in os.listdir(DOC_DIR) if f.endswith("_description.md")]

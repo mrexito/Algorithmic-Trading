@@ -1,4 +1,5 @@
 # ==================== dashboard/layouts/tab2_details_layout.py ====================
+"""Layout for the detail tab with dropdown filters and QuantStats placeholders."""
 
 from dash import html, dcc
 from dashboard.data_loader import get_available_results

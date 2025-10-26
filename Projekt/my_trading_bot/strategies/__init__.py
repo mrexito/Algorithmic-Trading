@@ -1,3 +1,5 @@
+"""Convenience exports for all strategies available to the trading bot."""
+
 from .dummy_strategy import DummyStrategy
 from .rsi_strategy import RSIStrategy
 from .macd_strategy import MACDStrategy
