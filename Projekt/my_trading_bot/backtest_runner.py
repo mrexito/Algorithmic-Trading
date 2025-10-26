@@ -32,14 +32,18 @@ def run_backtests():
         "DTW": DTWStrategy,
         "HORIZONTAL": HorizontalPatternStrategy,
         "BOLLINGER": BollingerStrategy,
-        "ZIGZAG": ZigZagStrategy
+        "ZIGZAG": ZigZagStrategy,
     }
 
     os.makedirs(RESULT_DIR, exist_ok=True)
     download_and_save_data()
 
     for symbol in PREDEFINED_SYMBOLS:
-        df = pd.read_csv(os.path.join(DATA_DIR, f"{symbol}.csv"), index_col="datetime", parse_dates=True)
+        df = pd.read_csv(
+            os.path.join(DATA_DIR, f"{symbol}.csv"),
+            index_col="datetime",
+            parse_dates=True,
+        )
 
         for strat_name, strat_class in strategies.items():
             cerebro = bt.Cerebro()
@@ -50,7 +54,7 @@ def run_backtests():
             cerebro.addsizer(bt.sizers.PercentSizer, percents=5)
             cerebro.broker.set_cash(CAPITAL)
             cerebro.broker.setcommission(commission=COMMISSION)
-            cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='timereturn')
+            cerebro.addanalyzer(bt.analyzers.TimeReturn, _name="timereturn")
             results = cerebro.run()
 
             returns = results[0].analyzers.timereturn.get_analysis()

@@ -7,9 +7,7 @@ class HorizontalPatternStrategy(bt.Strategy):
     """Buy near recent lows with supporting momentum and exit on TP/SL touches."""
 
     params = dict(
-        lookback=20,
-        stop_loss=0.03,        # 3% Stop-Loss
-        take_profit=0.05       # 5% Take-Profit
+        lookback=20, stop_loss=0.03, take_profit=0.05  # 3% Stop-Loss  # 5% Take-Profit
     )
 
     def __init__(self):
@@ -31,7 +29,11 @@ class HorizontalPatternStrategy(bt.Strategy):
 
         # Kaufbedingung: RSI unter 35, Kurs leicht über jüngstem Tief, positive Dynamik
         if not self.position:
-            if self.rsi[0] < 35 and self.data.close[0] > self.lowest[0] * 1.02 and self.ma_short[0] > self.ma_long[0]:
+            if (
+                self.rsi[0] < 35
+                and self.data.close[0] > self.lowest[0] * 1.02
+                and self.ma_short[0] > self.ma_long[0]
+            ):
                 self.order = self.buy()
                 self.buy_price = self.data.close[0]
 

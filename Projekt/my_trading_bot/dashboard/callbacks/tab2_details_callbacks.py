@@ -14,6 +14,7 @@ import quantstats as qs
 
 # QuantStats internally invokes matplotlib; force a headless backend to avoid macOS GUI/thread issues.
 import matplotlib
+
 matplotlib.use("Agg")
 
 
@@ -54,10 +55,11 @@ def _normalize_returns(x: pd.Series | pd.DataFrame) -> pd.Series:
 
 
 @dash.callback(
-    [Output("quantstats-metrics", "children"),
-     Output("quantstats-report", "children")],
-    [Input("details-strategy-dropdown", "value"),
-     Input("details-symbol-dropdown", "value")]
+    [Output("quantstats-metrics", "children"), Output("quantstats-report", "children")],
+    [
+        Input("details-strategy-dropdown", "value"),
+        Input("details-symbol-dropdown", "value"),
+    ],
 )
 def update_details(strategy, symbol):
     """Render QuantStats metrics table and report for the selected strategy/symbol."""
@@ -80,12 +82,14 @@ def update_details(strategy, symbol):
         benchmark=None,  # prevent QuantStats from fetching SPY over the network
     )
     metrics_html = stats_df.to_html()
-    metrics_content = html.Div([
-        html.Iframe(
-            srcDoc=metrics_html,
-            style={"width": "100%", "height": "420px", "border": "none"},
-        )
-    ])
+    metrics_content = html.Div(
+        [
+            html.Iframe(
+                srcDoc=metrics_html,
+                style={"width": "100%", "height": "420px", "border": "none"},
+            )
+        ]
+    )
 
     # 2️⃣ Vollstaendiger QuantStats-HTML-Report
     tmp_path = None
@@ -104,12 +108,14 @@ def update_details(strategy, symbol):
         with open(tmp_path, "r", encoding="utf-8") as f:
             report_html = f.read()
 
-        report_content = html.Div([
-            html.Iframe(
-                srcDoc=report_html,
-                style={"width": "100%", "height": "1800px", "border": "none"},
-            )
-        ])
+        report_content = html.Div(
+            [
+                html.Iframe(
+                    srcDoc=report_html,
+                    style={"width": "100%", "height": "1800px", "border": "none"},
+                )
+            ]
+        )
 
     except Exception as err:
         dbg = [
@@ -120,11 +126,13 @@ def update_details(strategy, symbol):
             f"freq={getattr(returns.index, 'freq', None)}",
             f"head=\n{returns.head().to_string()}",
         ]
-        report_content = html.Div([
-            html.P("Fehler beim Laden des QuantStats-Reports."),
-            html.Pre(str(err)),
-            html.Pre("\n".join(dbg)),
-        ])
+        report_content = html.Div(
+            [
+                html.P("Fehler beim Laden des QuantStats-Reports."),
+                html.Pre(str(err)),
+                html.Pre("\n".join(dbg)),
+            ]
+        )
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)

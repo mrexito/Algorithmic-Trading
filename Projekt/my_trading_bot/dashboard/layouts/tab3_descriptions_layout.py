@@ -18,15 +18,19 @@ def get_available_strategies():
 
 strategy_options = get_available_strategies()
 
-layout = html.Div([
-    html.H2("Strategiebeschreibungen"),
-    html.Div([
-        html.Label("Wähle eine Strategie:"),
-        dcc.Dropdown(
-            id="description-strategy-dropdown",
-            options=[{"label": s, "value": s} for s in strategy_options],
-            placeholder="Strategie auswählen"
-        )
-    ]),
-    html.Div(id="strategy-description-content", style={"marginTop": "20px"})
-])
+layout = html.Div(
+    [
+        html.H2("Strategiebeschreibungen"),
+        html.Div(
+            [
+                html.Label("Wähle eine Strategie:"),
+                dcc.Dropdown(
+                    id="description-strategy-dropdown",
+                    options=[{"label": s, "value": s} for s in strategy_options],
+                    placeholder="Strategie auswählen",
+                ),
+            ]
+        ),
+        html.Div(id="strategy-description-content", style={"marginTop": "20px"}),
+    ]
+)

@@ -12,7 +12,7 @@ DOC_DIR = os.path.join(BASE_DIR, "docs", "strategy_descriptions")
 
 @callback(
     Output("strategy-description-content", "children"),
-    Input("description-strategy-dropdown", "value")
+    Input("description-strategy-dropdown", "value"),
 )
 def update_strategy_description(strategy_name):
     """Load and render the markdown description for the requested strategy."""

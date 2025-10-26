@@ -11,9 +11,7 @@ class BollingerStrategy(bt.Strategy):
     def __init__(self):
         """Set up the Bollinger Band indicator and internal order tracking."""
         self.bbands = bt.indicators.BollingerBands(
-            self.datas[0].close,
-            period=self.p.period,
-            devfactor=self.p.devfactor
+            self.datas[0].close, period=self.p.period, devfactor=self.p.devfactor
         )
         self.order = None
 

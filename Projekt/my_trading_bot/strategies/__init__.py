@@ -11,13 +11,13 @@ from .bollinger_strategy import BollingerStrategy
 from .zigzag_strategy import ZigZagStrategy
 
 __all__ = [
-    'DummyStrategy',
-    'RSIStrategy',
-    'MACDStrategy',
-    'SMAStrategy',
-    'AIStrategy',
-    'DTWStrategy',
-    'HorizontalPatternStrategy',
-    'BollingerStrategy',
-    'ZigZagStrategy'
+    "DummyStrategy",
+    "RSIStrategy",
+    "MACDStrategy",
+    "SMAStrategy",
+    "AIStrategy",
+    "DTWStrategy",
+    "HorizontalPatternStrategy",
+    "BollingerStrategy",
+    "ZigZagStrategy",
 ]
