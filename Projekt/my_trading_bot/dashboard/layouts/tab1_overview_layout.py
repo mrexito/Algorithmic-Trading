@@ -49,14 +49,7 @@ layout = html.Div(
                 html.Div(
                     className="card graph-card",
                     children=[
-                        html.Div(
-                            className="graph-toolbar",
-                            children=[
-                                html.Button("Zoom In", id="overview-zoom-in", className="graph-button"),
-                                html.Button("Zoom Out", id="overview-zoom-out", className="graph-button"),
-                                html.Button("Reset", id="overview-zoom-reset", className="graph-button"),
-                            ],
-                        ),
+                        
                         dcc.Graph(
                             id="overview-comparison-graph",
                             config={

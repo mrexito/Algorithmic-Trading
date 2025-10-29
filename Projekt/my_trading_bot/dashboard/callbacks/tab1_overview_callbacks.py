@@ -55,17 +55,11 @@ def _format_value(value):
     Output("overview-comparison-graph", "figure"),
     Input("overview-symbol-dropdown", "value"),
     Input("overview-strategy-dropdown", "value"),
-    Input("overview-zoom-in", "n_clicks"),
-    Input("overview-zoom-out", "n_clicks"),
-    Input("overview-zoom-reset", "n_clicks"),
     State("overview-comparison-graph", "figure"),
 )
 def update_overview_tab(
     selected_symbols,
     selected_strategies,
-    _zoom_in_clicks,
-    _zoom_out_clicks,
-    _zoom_reset_clicks,
     existing_figure,
 ):
     ctx = dash.callback_context
