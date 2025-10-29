@@ -1,126 +1,77 @@
-# ==================== dashboard/callbacks/tab2_details_callbacks.py ====================
-
 import os
 import tempfile
+
 import dash
 from dash import html
 from dash.dependencies import Input, Output
-import pandas as pd
-import numpy as np
 import quantstats.reports as qsr
-from dashboard.data_loader import load_returns
+
+from dashboard.data_loader import (
+    get_strategy_symbol_map,
+    load_returns,
+    normalize_returns,
+)
 
 
-# beim Start die Versionen ausgeben (nur zur Kontrolle)
-import pandas as _pd, quantstats as _qs, numpy as _np
-print(f"[QS-Env] pandas={_pd.__version__} quantstats={_qs.__version__} numpy={_np.__version__}")
+def _strategy_symbol_options(strategy: str | None):
+    mapping = get_strategy_symbol_map()
+    if not strategy or strategy not in mapping:
+        return [], None, True
 
-
-def _normalize_returns(x: pd.Series | pd.DataFrame) -> pd.Series:
-    """Bringt Equity- oder Return-Daten in taegliche einfache Renditen-Form fuer QuantStats."""
-    s = x
-    if isinstance(s, pd.DataFrame):
-        for c in ["returns", "ret", "r", "daily_return", "strategy_return"]:
-            if c in s.columns:
-                s = s[c]
-                break
-        else:
-            s = s.iloc[:, 0]
-
-    if not isinstance(s.index, pd.DatetimeIndex):
-        s.index = pd.to_datetime(s.index, errors="coerce")
-    s = s.sort_index()
-
-    # Equity-Kurve -> Renditen
-    if s.min() >= 0 and s.max() > 2:
-        s = s.pct_change()
-
-    # pro Kalendertag aggregieren
-    s = s.groupby(s.index.normalize()).apply(lambda v: (1 + v).prod() - 1)
-
-    # aufraeumen
-    s = s.astype(float).replace([np.inf, -np.inf], np.nan).dropna()
-
-    # Tagesfrequenz erzwingen
-    s = s.asfreq("D").fillna(0.0)
-    try:
-        s.index.freq = pd.tseries.offsets.Day()
-    except Exception:
-        pass
-
-    s.name = "returns"
-    return s
+    options = [{"label": symbol, "value": symbol} for symbol in mapping[strategy]]
+    default_value = mapping[strategy][0] if len(mapping[strategy]) == 1 else None
+    return options, default_value, False
 
 
 @dash.callback(
-    [Output("quantstats-metrics", "children"),
-     Output("quantstats-report", "children")],
-    [Input("details-strategy-dropdown", "value"),
-     Input("details-symbol-dropdown", "value")]
+    Output("details-symbol-dropdown", "options"),
+    Output("details-symbol-dropdown", "value"),
+    Output("details-symbol-dropdown", "disabled"),
+    Input("details-strategy-dropdown", "value"),
+)
+def update_symbol_dropdown(strategy):
+    return _strategy_symbol_options(strategy)
+
+
+@dash.callback(
+    Output("quantstats-report", "children"),
+    Input("details-strategy-dropdown", "value"),
+    Input("details-symbol-dropdown", "value"),
 )
 def update_details(strategy, symbol):
     if not strategy or not symbol:
-        return dash.no_update, dash.no_update
+        return html.Div("Bitte wähle zuerst eine Strategie und ein Symbol.", className="empty-state")
 
     raw = load_returns(symbol, strategy)
-    if raw is None or (hasattr(raw, "empty") and raw.empty):
-        return html.Div("Keine Daten verfügbar."), html.Div()
-
-    returns = _normalize_returns(raw)
+    returns = normalize_returns(raw)
     if returns.empty:
-        return html.Div("Keine Daten verfügbar."), html.Div()
+        return html.Div("Keine Daten für diese Kombination gefunden.", className="empty-state")
 
-    # 1️⃣ QuantStats-Metriken (Tabelle)
-    stats_df = qsr.metrics(returns, display=False, mode="full")
-    metrics_html = stats_df.to_html()
-    metrics_content = html.Div([
-        html.Iframe(
-            srcDoc=metrics_html,
-            style={"width": "100%", "height": "420px", "border": "none"},
-        )
-    ])
-
-    # 2️⃣ Vollstaendiger QuantStats-HTML-Report
-    tmp_path = None
+    temp_path = None
     try:
-        fd, tmp_path = tempfile.mkstemp(suffix=".html")
-        os.close(fd)
-
+        handle, temp_path = tempfile.mkstemp(suffix=".html")
+        os.close(handle)
         qsr.html(
-              returns,
-             # benchmark="SPY",  # <-- entfernen / auskommentieren
-            output=tmp_path,
-            title=f"Strategie Tearsheet: {strategy} - {symbol}",
+            returns,
+            output=temp_path,
+            title=f"Strategie Tearsheet: {strategy} – {symbol}",
             download_filename="quantstats_report.html",
-           )   
-
-        with open(tmp_path, "r", encoding="utf-8") as f:
-            report_html = f.read()
-
-        report_content = html.Div([
-            html.Iframe(
-                srcDoc=report_html,
-                style={"width": "100%", "height": "1800px", "border": "none"},
-            )
-        ])
-
-    except Exception as err:
-        import pandas as pd, quantstats as qs, numpy as np
-        dbg = [
-            f"pandas={pd.__version__}",
-            f"quantstats={qs.__version__}",
-            f"numpy={np.__version__}",
-            f"returns_len={len(returns)}",
-            f"freq={getattr(returns.index, 'freq', None)}",
-            f"head=\n{returns.head().to_string()}",
-        ]
-        report_content = html.Div([
-            html.P("Fehler beim Laden des QuantStats-Reports."),
-            html.Pre(str(err)),
-            html.Pre("\n".join(dbg)),
-        ])
+        )
+        with open(temp_path, "r", encoding="utf-8") as file:
+            content = file.read()
+    except Exception as exc:  # pragma: no cover - defensive feedback path
+        return html.Div(
+            [
+                html.P("Fehler beim Erstellen des QuantStats-Reports."),
+                html.Pre(str(exc)),
+            ],
+            className="error-state",
+        )
     finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
-    return metrics_content, report_content
+    return html.Iframe(
+        srcDoc=content,
+        style={"width": "100%", "height": "1800px", "border": "none"},
+    )

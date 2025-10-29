@@ -1,46 +1,53 @@
-# ==================== dashboard/layouts/tab2_details_layout.py ====================
+from dash import dcc, html
 
-from dash import html, dcc
-from dashboard.data_loader import get_available_results
+from dashboard.data_loader import get_strategy_symbol_map
 
-results = get_available_results()
-symbols = sorted(set([res[0] for res in results]))
-strategies = sorted(set([res[1] for res in results]))
 
-layout = html.Div([
-    html.H2("Strategiedetails"),
+strategy_symbol_map = get_strategy_symbol_map()
+strategy_options = sorted(strategy_symbol_map.keys())
 
-    html.Div([
-        html.Label("Wähle eine Strategie:"),
-        dcc.Dropdown(
-            id="details-strategy-dropdown",
-            options=[{"label": s, "value": s} for s in strategies],
-            placeholder="Strategie auswählen...",
-            clearable=True,
-            style={"width": "50%"}
+
+layout = html.Div(
+    className="tab-container",
+    children=[
+        html.H2("Strategiedetails", className="tab-heading"),
+        html.Div(
+            className="control-row",
+            children=[
+                html.Div(
+                    className="control-group",
+                    children=[
+                        html.Label("Wähle eine Strategie", className="control-label"),
+                        dcc.Dropdown(
+                            id="details-strategy-dropdown",
+                            options=[{"label": s, "value": s} for s in strategy_options],
+                            placeholder="Strategie auswählen",
+                            clearable=True,
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="control-group",
+                    children=[
+                        html.Label("Wähle ein Symbol", className="control-label"),
+                        dcc.Dropdown(
+                            id="details-symbol-dropdown",
+                            options=[],
+                            placeholder="Symbol auswählen",
+                            clearable=True,
+                            disabled=True,
+                        ),
+                    ],
+                ),
+            ],
         ),
-    ], style={"marginBottom": "16px"}),
-
-    html.Div([
-        html.Label("Wähle ein Symbol:"),
-        dcc.Dropdown(
-            id="details-symbol-dropdown",
-            options=[{"label": s, "value": s} for s in symbols],
-            placeholder="Symbol auswählen...",
-            clearable=True,
-            style={"width": "50%"}
+        dcc.Loading(
+            type="circle",
+            className="card",
+            children=html.Div(
+                id="quantstats-report",
+                className="quantstats-report",
+            ),
         ),
-    ], style={"marginBottom": "24px"}),
-
-    html.Div(id="quantstats-metrics", style={"marginBottom": "40px"}),
-
-    html.Div(
-        id="quantstats-report",
-        style={
-            "borderTop": "1px solid #ccc",
-            "paddingTop": "20px",
-            "maxHeight": "1600px",
-            "overflowY": "auto"
-        }
-    ),
-])
+    ],
+)

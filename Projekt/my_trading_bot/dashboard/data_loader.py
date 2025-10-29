@@ -1,5 +1,8 @@
 import os
 import pickle
+from collections import defaultdict
+
+import numpy as np
 import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -13,6 +16,57 @@ def get_available_results():
         strat, symbol = name.split("_")
         combos.append((symbol, strat))
     return combos
+
+
+def get_strategy_symbol_map():
+    """Return a mapping from strategy name to the available symbols."""
+    mapping: dict[str, list[str]] = defaultdict(list)
+    for symbol, strategy in get_available_results():
+        mapping[strategy].append(symbol)
+    return {strategy: sorted(set(symbols)) for strategy, symbols in mapping.items()}
+
+
+def normalize_returns(data):
+    """Convert various return/equity formats into a clean daily return series."""
+    if data is None:
+        return pd.Series(dtype=float)
+
+    series = data
+    if isinstance(series, pd.DataFrame):
+        for candidate in [
+            "returns",
+            "ret",
+            "r",
+            "daily_return",
+            "strategy_return",
+        ]:
+            if candidate in series.columns:
+                series = series[candidate]
+                break
+        else:
+            series = series.iloc[:, 0]
+
+    series = pd.Series(series).copy()
+
+    if not isinstance(series.index, pd.DatetimeIndex):
+        series.index = pd.to_datetime(series.index, errors="coerce")
+    series = series[series.index.notna()].sort_index()
+
+    if series.min() >= 0 and series.max() > 2:
+        series = series.pct_change()
+
+    series = series.groupby(series.index.normalize()).apply(lambda values: (1 + values).prod() - 1)
+    series = series.astype(float).replace([np.inf, -np.inf], np.nan).dropna()
+    series = series.asfreq("B").fillna(0.0)
+
+    try:
+        series.index.freq = pd.tseries.offsets.BusinessDay()
+    except Exception:
+        pass
+
+    series.name = "returns"
+    return series
+
 
 def load_returns(symbol, strategy):
     file_path = os.path.join(RESULT_DIR, f"{strategy}_{symbol}_returns.pkl")
