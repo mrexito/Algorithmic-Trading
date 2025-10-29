@@ -1,16 +1,27 @@
 import os
 import tempfile
+from functools import lru_cache
+from threading import Lock
+
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 import dash
 from dash import html
 from dash.dependencies import Input, Output
+import matplotlib
 import quantstats.reports as qsr
 
 from dashboard.data_loader import (
     get_strategy_symbol_map,
     load_returns,
     normalize_returns,
+    result_file_path,
 )
+
+matplotlib.use("Agg", force=True)
+
+
+_REPORT_CACHE_GUARD = Lock()
 
 
 def _strategy_symbol_options(strategy: str | None):
@@ -42,23 +53,10 @@ def update_details(strategy, symbol):
     if not strategy or not symbol:
         return html.Div("Bitte wähle zuerst eine Strategie und ein Symbol.", className="empty-state")
 
-    raw = load_returns(symbol, strategy)
-    returns = normalize_returns(raw)
-    if returns.empty:
-        return html.Div("Keine Daten für diese Kombination gefunden.", className="empty-state")
-
-    temp_path = None
     try:
-        handle, temp_path = tempfile.mkstemp(suffix=".html")
-        os.close(handle)
-        qsr.html(
-            returns,
-            output=temp_path,
-            title=f"Strategie Tearsheet: {strategy} – {symbol}",
-            download_filename="quantstats_report.html",
-        )
-        with open(temp_path, "r", encoding="utf-8") as file:
-            content = file.read()
+        content = _get_quantstats_report(strategy, symbol)
+    except _NoDataAvailableError:
+        return html.Div("Keine Daten für diese Kombination gefunden.", className="empty-state")
     except Exception as exc:  # pragma: no cover - defensive feedback path
         return html.Div(
             [
@@ -67,11 +65,47 @@ def update_details(strategy, symbol):
             ],
             className="error-state",
         )
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            os.remove(temp_path)
 
     return html.Iframe(
         srcDoc=content,
         style={"width": "100%", "height": "1800px", "border": "none"},
     )
+
+
+class _NoDataAvailableError(RuntimeError):
+    """Raised when no returns are available for the selected combination."""
+
+
+def _get_quantstats_report(strategy: str, symbol: str) -> str:
+    file_path = result_file_path(symbol, strategy)
+    try:
+        file_mtime = os.path.getmtime(file_path)
+    except OSError:
+        file_mtime = None
+
+    with _REPORT_CACHE_GUARD:
+        return _render_report_cached(strategy, symbol, file_mtime)
+
+
+@lru_cache(maxsize=16)
+def _render_report_cached(strategy: str, symbol: str, _file_mtime: float | None) -> str:
+    raw = load_returns(symbol, strategy)
+    returns = normalize_returns(raw)
+    if returns.empty:
+        raise _NoDataAvailableError
+
+    handle, temp_path = tempfile.mkstemp(suffix=".html")
+    os.close(handle)
+
+    try:
+        qsr.html(
+            returns,
+            output=temp_path,
+            title=f"Strategie Tearsheet: {strategy} – {symbol}",
+            download_filename="quantstats_report.html",
+        )
+        with open(temp_path, "r", encoding="utf-8") as file:
+            return file.read()
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)

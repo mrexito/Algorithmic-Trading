@@ -43,16 +43,17 @@ layout = html.Div(
         ),
         dcc.Loading(
             type="circle",
-            className="card",
-            children=html.Div(id="performance-table"),
-        ),
-        dcc.Loading(
-            type="circle",
-            className="card",
-            children=dcc.Graph(
-                id="overview-comparison-graph",
-                config={"displayModeBar": False},
-            ),
+            className="loading-overlay",
+            children=[
+                html.Div(id="performance-table", className="card"),
+                html.Div(
+                    className="card",
+                    children=dcc.Graph(
+                        id="overview-comparison-graph",
+                        config={"displayModeBar": False},
+                    ),
+                ),
+            ],
         ),
     ],
 )
