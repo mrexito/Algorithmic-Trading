@@ -110,3 +110,39 @@ h2.tab-heading {
     border-radius: 10px;
     background: #fff;
 }
+
+.graph-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.graph-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.graph-button {
+    padding: 6px 14px;
+    border-radius: 9999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.graph-button:hover,
+.graph-button:focus {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #ffffff;
+}
+
+.graph-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

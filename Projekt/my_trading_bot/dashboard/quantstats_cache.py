@@ -16,8 +16,7 @@ import quantstats.reports as qsr
 
 from dashboard.data_loader import (
     get_available_results,
-    load_returns,
-    normalize_returns,
+    load_normalized_returns,
     result_file_path,
 )
 
@@ -70,8 +69,7 @@ def _is_cache_valid(cache_path: Path, data_mtime: float | None) -> bool:
 
 
 def _render_report(strategy: str, symbol: str, cache_path: Path) -> str:
-    raw_returns = load_returns(symbol, strategy)
-    returns = normalize_returns(raw_returns)
+    returns = load_normalized_returns(symbol, strategy)
     if returns.empty:
         raise NoDataAvailableError
 
