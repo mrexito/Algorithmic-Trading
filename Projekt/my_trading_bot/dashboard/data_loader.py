@@ -8,6 +8,11 @@ import pandas as pd
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULT_DIR = os.path.join(BASE_DIR, "results")
 
+
+def result_file_path(symbol: str, strategy: str) -> str:
+    """Return the absolute path of the stored returns for a strategy/symbol."""
+    return os.path.join(RESULT_DIR, f"{strategy}_{symbol}_returns.pkl")
+
 def get_available_results():
     files = [f for f in os.listdir(RESULT_DIR) if f.endswith("_returns.pkl")]
     combos = []
@@ -55,7 +60,9 @@ def normalize_returns(data):
     if series.min() >= 0 and series.max() > 2:
         series = series.pct_change()
 
-    series = series.groupby(series.index.normalize()).apply(lambda values: (1 + values).prod() - 1)
+    series = series.groupby(series.index.normalize()).apply(
+        lambda values: (1 + values).prod(axis=0) - 1
+    )
     series = series.astype(float).replace([np.inf, -np.inf], np.nan).dropna()
     series = series.asfreq("B").fillna(0.0)
 
@@ -69,7 +76,7 @@ def normalize_returns(data):
 
 
 def load_returns(symbol, strategy):
-    file_path = os.path.join(RESULT_DIR, f"{strategy}_{symbol}_returns.pkl")
+    file_path = result_file_path(symbol, strategy)
     if os.path.exists(file_path):
         with open(file_path, "rb") as f:
             return pickle.load(f)

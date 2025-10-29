@@ -1,16 +1,22 @@
 import os
-import tempfile
+
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 import dash
 from dash import html
 from dash.dependencies import Input, Output
-import quantstats.reports as qsr
+import matplotlib
 
-from dashboard.data_loader import (
-    get_strategy_symbol_map,
-    load_returns,
-    normalize_returns,
+from dashboard.data_loader import get_strategy_symbol_map
+from dashboard.quantstats_cache import (
+    NoDataAvailableError,
+    get_report,
+    preload_existing_reports,
 )
+
+matplotlib.use("Agg", force=True)
+
+preload_existing_reports()
 
 
 def _strategy_symbol_options(strategy: str | None):
@@ -42,23 +48,10 @@ def update_details(strategy, symbol):
     if not strategy or not symbol:
         return html.Div("Bitte wähle zuerst eine Strategie und ein Symbol.", className="empty-state")
 
-    raw = load_returns(symbol, strategy)
-    returns = normalize_returns(raw)
-    if returns.empty:
-        return html.Div("Keine Daten für diese Kombination gefunden.", className="empty-state")
-
-    temp_path = None
     try:
-        handle, temp_path = tempfile.mkstemp(suffix=".html")
-        os.close(handle)
-        qsr.html(
-            returns,
-            output=temp_path,
-            title=f"Strategie Tearsheet: {strategy} – {symbol}",
-            download_filename="quantstats_report.html",
-        )
-        with open(temp_path, "r", encoding="utf-8") as file:
-            content = file.read()
+        content = get_report(strategy, symbol)
+    except NoDataAvailableError:
+        return html.Div("Keine Daten für diese Kombination gefunden.", className="empty-state")
     except Exception as exc:  # pragma: no cover - defensive feedback path
         return html.Div(
             [
@@ -67,9 +60,6 @@ def update_details(strategy, symbol):
             ],
             className="error-state",
         )
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            os.remove(temp_path)
 
     return html.Iframe(
         srcDoc=content,
