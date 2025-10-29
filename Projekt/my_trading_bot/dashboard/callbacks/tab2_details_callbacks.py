@@ -13,8 +13,7 @@ import quantstats.reports as qsr
 
 from dashboard.data_loader import (
     get_strategy_symbol_map,
-    load_returns,
-    normalize_returns,
+    load_normalized_returns,
     result_file_path,
 )
 
@@ -89,8 +88,7 @@ def _get_quantstats_report(strategy: str, symbol: str) -> str:
 
 @lru_cache(maxsize=16)
 def _render_report_cached(strategy: str, symbol: str, _file_mtime: float | None) -> str:
-    raw = load_returns(symbol, strategy)
-    returns = normalize_returns(raw)
+    returns = load_normalized_returns(symbol, strategy)
     if returns.empty:
         raise _NoDataAvailableError
 

@@ -1,6 +1,7 @@
 import os
 import pickle
 from collections import defaultdict
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -75,9 +76,21 @@ def normalize_returns(data):
     return series
 
 
+@lru_cache(maxsize=256)
 def load_returns(symbol, strategy):
     file_path = result_file_path(symbol, strategy)
     if os.path.exists(file_path):
         with open(file_path, "rb") as f:
             return pickle.load(f)
     return pd.Series()
+
+
+@lru_cache(maxsize=256)
+def load_normalized_returns(symbol: str, strategy: str) -> pd.Series:
+    """Return cached, normalised daily returns for the given selection."""
+
+    raw_returns = load_returns(symbol, strategy)
+    if isinstance(raw_returns, pd.Series):
+        # Ensure a fresh copy so callers do not mutate the cached series.
+        raw_returns = raw_returns.copy()
+    return normalize_returns(raw_returns)

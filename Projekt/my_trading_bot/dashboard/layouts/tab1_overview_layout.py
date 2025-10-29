@@ -47,11 +47,29 @@ layout = html.Div(
             children=[
                 html.Div(id="performance-table", className="card"),
                 html.Div(
-                    className="card",
-                    children=dcc.Graph(
-                        id="overview-comparison-graph",
-                        config={"displayModeBar": False},
-                    ),
+                    className="card graph-card",
+                    children=[
+                        html.Div(
+                            className="graph-toolbar",
+                            children=[
+                                html.Button("Zoom In", id="overview-zoom-in", className="graph-button"),
+                                html.Button("Zoom Out", id="overview-zoom-out", className="graph-button"),
+                                html.Button("Reset", id="overview-zoom-reset", className="graph-button"),
+                            ],
+                        ),
+                        dcc.Graph(
+                            id="overview-comparison-graph",
+                            config={
+                                "displayModeBar": True,
+                                "displaylogo": False,
+                                "modeBarButtonsToAdd": [
+                                    "zoomIn2d",
+                                    "zoomOut2d",
+                                    "autoScale2d",
+                                ],
+                            },
+                        ),
+                    ],
                 ),
             ],
         ),
