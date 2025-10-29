@@ -1,50 +1,112 @@
+:root {
+    --background: #f4f6fb;
+    --surface: #ffffff;
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --text: #1f2933;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+}
 
 body {
-    font-family: 'Roboto', Arial, sans-serif;
-    margin: 20px;
-    background: linear-gradient(to right, #eef2f3, #ffffff);
-    color: #333;
+    font-family: "Roboto", "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    padding: 24px;
+    background: var(--background);
+    color: var(--text);
 }
 
+h2.tab-heading {
+    font-weight: 600;
+    margin-bottom: 20px;
+}
 
-/* ===================== style.css ===================== */
+.tab-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
 
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 20px;
+.control-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.control-group {
+    flex: 1 1 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.control-label {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+}
+
+.Select-control,
+.Select.is-focused .Select-control {
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    box-shadow: none;
+}
+
+.Select-placeholder,
+.Select-value-label {
+    color: var(--text);
     font-size: 14px;
-
-    font-family: 'Roboto', Arial, sans-serif;
-    background-color: #fff;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    border-radius: 8px;
-    overflow: hidden;
 }
 
-th, td {
-    border: 1px solid #ddd;
-    padding: 8px;
+.Select-menu-outer {
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
 }
 
-th {
+.card {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    border: 1px solid var(--border);
+}
 
-    background-color: #4a90e2;
-    color: #fff;
+.dash-loading-spinner > div {
+    border-color: var(--primary) transparent transparent transparent !important;
+}
 
+.dash-table-container .dash-table {
+    border: none;
+    font-family: inherit;
+}
+
+.dash-table-container .dash-spreadsheet-container {
+    border: none;
+}
+
+.empty-state,
+.error-state {
+    padding: 32px 20px;
     text-align: center;
-    font-weight: bold;
+    border-radius: 12px;
+    border: 1px dashed var(--border);
+    color: var(--muted);
+    background: rgba(37, 99, 235, 0.04);
 }
 
-td {
-    text-align: right;
+.error-state {
+    color: #b91c1c;
+    background: rgba(220, 38, 38, 0.08);
+    border-color: rgba(220, 38, 38, 0.3);
 }
 
-tr:nth-child(even) {
-
-    background-color: #f5f7fa;
-}
-
-tr:hover {
-    background-color: #d9e9ff;
+.quantstats-report iframe {
+    border-radius: 10px;
+    background: #fff;
 }

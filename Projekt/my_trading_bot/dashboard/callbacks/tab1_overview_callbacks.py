@@ -1,75 +1,133 @@
-# ==================== dashboard/callbacks/tab1_overview_callbacks.py ====================
-
 import dash
-from dash.dependencies import Input, Output
-from dashboard.data_loader import load_returns
-from dash import html
+import numpy as np
 import plotly.graph_objs as go
 import quantstats.stats as qs_stats
-import pandas as pd
+from dash import dash_table, html
+from dash.dependencies import Input, Output
+
+from dashboard.data_loader import load_returns, normalize_returns
+
+
+_METRICS = (
+    ("CAGR (%)", lambda r: qs_stats.cagr(r) * 100),
+    ("Sharpe Ratio", lambda r: qs_stats.sharpe(r, periods=252)),
+    ("Max Drawdown (%)", lambda r: qs_stats.max_drawdown(r) * 100),
+    ("Trefferquote (%)", lambda r: qs_stats.win_rate(r) * 100),
+    ("Profit-Faktor", qs_stats.profit_factor),
+    ("Ø Tagesrendite (%)", lambda r: qs_stats.avg_return(r) * 100),
+    ("Ø Verlust (%)", lambda r: qs_stats.avg_loss(r) * 100),
+    ("Gewinnserie", qs_stats.consecutive_wins),
+    ("Verlustserie", qs_stats.consecutive_losses),
+)
+
+
+def _safe_value(metric, returns):
+    try:
+        value = metric(returns)
+    except Exception:
+        return None
+
+    if value is None:
+        return None
+
+    if isinstance(value, (list, tuple)):
+        return None
+
+    if isinstance(value, (float, np.floating)) and (np.isnan(value) or np.isinf(value)):
+        return None
+
+    return value
+
+
+def _format_value(value):
+    if value is None:
+        return "–"
+    if isinstance(value, (float, np.floating)):
+        return f"{value:.2f}"
+    return str(value)
+
 
 @dash.callback(
-    [Output("performance-table", "children"),
-     Output("overview-comparison-graph", "figure")],
-    [Input("overview-symbol-dropdown", "value"),
-     Input("overview-strategy-dropdown", "value")]
+    Output("performance-table", "children"),
+    Output("overview-comparison-graph", "figure"),
+    Input("overview-symbol-dropdown", "value"),
+    Input("overview-strategy-dropdown", "value"),
 )
 def update_overview_tab(selected_symbols, selected_strategies):
     if not selected_symbols or not selected_strategies:
         return dash.no_update, dash.no_update
 
-    rows = []
-    fig = go.Figure()
+    table_rows = []
+    figure = go.Figure()
 
     for symbol in selected_symbols:
         for strategy in selected_strategies:
-            returns = load_returns(symbol, strategy)
-            if not returns.empty:
-                returns.index = pd.to_datetime(returns.index)
-                returns = returns.asfreq('B').fillna(0)
+            raw_returns = load_returns(symbol, strategy)
+            returns = normalize_returns(raw_returns)
+            if returns.empty:
+                continue
 
-                def get_metric(metric_func):
-                    try:
-                        val = metric_func(returns)
-                        return f"{val:.5f}" if val is not None else "N/A"
-                    except Exception:
-                        return "N/A"
+            metrics = {name: _format_value(_safe_value(func, returns)) for name, func in _METRICS}
+            table_rows.append({
+                "Symbol": symbol,
+                "Strategie": strategy,
+                **metrics,
+            })
 
-                rows.append(html.Tr([
-                    html.Td(symbol),
-                    html.Td(strategy),
-                    html.Td(get_metric(qs_stats.consecutive_wins)),
-                    html.Td(get_metric(qs_stats.consecutive_losses)),
-                    html.Td(get_metric(qs_stats.avg_return)),
-                    html.Td(get_metric(qs_stats.avg_loss)),
-                    html.Td(get_metric(qs_stats.win_rate)),
-                    html.Td(get_metric(qs_stats.win_loss_ratio)),
-                    html.Td(get_metric(qs_stats.probabilistic_sharpe_ratio)),
-                    html.Td(get_metric(qs_stats.profit_factor))
-                ]))
+            cumulative = (1 + returns).cumprod()
+            figure.add_trace(
+                go.Scatter(
+                    x=cumulative.index,
+                    y=cumulative.values,
+                    mode="lines",
+                    name=f"{symbol} – {strategy}",
+                )
+            )
 
-                fig.add_trace(go.Scatter(
-                    x=returns.index,
-                    y=(1 + returns).cumprod(),
-                    mode='lines',
-                    name=f"{symbol}-{strategy}"
-                ))
+    if not table_rows:
+        empty_message = html.Div("Für die Auswahl liegen keine Daten vor.", className="empty-state")
+        figure.update_layout(
+            template="plotly_white",
+            xaxis={"visible": False},
+            yaxis={"visible": False},
+            annotations=[
+                {
+                    "text": "Keine Daten verfügbar",
+                    "xref": "paper",
+                    "yref": "paper",
+                    "showarrow": False,
+                    "font": {"size": 16, "color": "#6b7280"},
+                }
+            ],
+        )
+        return empty_message, figure
 
-    table = html.Table([
-        html.Thead(html.Tr([
-            html.Th("Symbol"),
-            html.Th("Strategie"),
-            html.Th("consecutive_wins"),
-            html.Th("consecutive_losses"),
-            html.Th("avg_return"),
-            html.Th("avg_loss"),
-            html.Th("win_rate"),
-            html.Th("win_loss_ratio"),
-            html.Th("probabilistic_sharpe_ratio"),
-            html.Th("profit_factor")
-        ])),
-        html.Tbody(rows)
-    ])
+    performance_table = dash_table.DataTable(
+        data=table_rows,
+        columns=[{"name": column, "id": column} for column in table_rows[0].keys()],
+        style_table={"overflowX": "auto"},
+        style_cell={
+            "padding": "8px",
+            "fontSize": "14px",
+            "textAlign": "center",
+        },
+        style_header={
+            "backgroundColor": "#2563eb",
+            "color": "white",
+            "fontWeight": "600",
+        },
+        style_data_conditional=[
+            {"if": {"row_index": "odd"}, "backgroundColor": "#f4f5f9"},
+        ],
+    )
 
-    fig.update_layout(title="Kumulierte Rendite", xaxis_title="Datum", yaxis_title="Wert")
-    return table, fig
+    figure.update_layout(
+        title="Kumulierte Rendite",
+        xaxis_title="Datum",
+        yaxis_title="Wachstum",
+        template="plotly_white",
+        hovermode="x unified",
+        legend_title_text="Kombination",
+    )
+
+    return performance_table, figure
