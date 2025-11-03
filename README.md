@@ -40,4 +40,75 @@ Projekt/
 This prototype uses local CSV files for historical price data and stores backtest results in `results/` as pickled Pandas Series.
 
 
+## 🔗 Data Source & Database Integration
+
+This project now supports **live market data fetching via Yahoo Finance** and **automatic storage in TimescaleDB** (running inside Docker).
+
+### 1. Yahoo Finance Integration
+The module `Projekt/my_trading_bot/data/market_data_api.py` handles market data loading using the [yfinance](https://pypi.org/project/yfinance/) library.
+
+You can fetch and store data manually via:
+```bash
+python -m Projekt.my_trading_bot.data.market_data_api AAPL --provider yf --duration "5 D" --bar-size "5 min"
+```
+
+**Parameters:**
+- `symbol`: Stock ticker (e.g., `AAPL`, `MSFT`)
+- `--provider`: Currently only `yf` (Yahoo Finance)
+- `--duration`: Time range (e.g., `"1 D"`, `"5 D"`, `"1 Mo"`, `"1 Y"`)
+- `--bar-size`: Granularity (e.g., `"1 min"`, `"5 min"`, `"1 day"`)
+
+This will:
+1. Fetch recent price data from Yahoo Finance.
+2. Save a CSV copy under `data/live_data/`.
+3. Upsert all data directly into the **TimescaleDB** table `ohlcv`.
+
+---
+
+### 2. TimescaleDB Integration
+The project uses a **TimescaleDB container** to store OHLCV (Open, High, Low, Close, Volume) data.
+
+#### 🐳 Docker setup
+Make sure your Timescale container is running:
+```bash
+docker ps
+```
+If not, start it:
+```bash
+docker run -d --name timescale -e POSTGRES_PASSWORD=postgres -p 5432:5432 timescale/timescaledb:latest-pg15
+```
+
+#### 🔧 Environment Configuration
+Set up the database connection for the dashboard and data loader:
+
+```bash
+export TIMESCALE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/market"
+export TS_TABLE="ohlcv"
+```
+
+> 💡 You can define these in a `.env` file for convenience.
+
+---
+
+### 3. Dashboard Data Flow
+The **Dash web app** now loads data **directly from the TimescaleDB** instead of local CSVs.  
+When you click **“Fetch & Upsert”**, it:
+1. Downloads the latest OHLCV data from Yahoo Finance.
+2. Stores it in TimescaleDB.
+3. Displays a line chart of the closing prices.
+
+---
+
+### 4. Verification
+To confirm data is stored in the database, run:
+```bash
+docker exec -it timescale psql -U postgres -d market -c "SELECT COUNT(*) FROM ohlcv;"
+```
+
+Or preview the last few entries:
+```bash
+docker exec -it timescale psql -U postgres -d market -c "SELECT * FROM ohlcv ORDER BY datetime DESC LIMIT 5;"
+```
+
+
 

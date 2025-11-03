@@ -21,13 +21,18 @@ matplotlib.use("Agg")
 def _normalize_returns(x: pd.Series | pd.DataFrame) -> pd.Series:
     """Convert equity or return inputs into daily simple returns for QuantStats."""
     s = x
+    # If a DataFrame sneaks in, collapse to a single numeric Series to avoid
+    # DataFrame.prod(axis=None) deprecation warnings downstream.
     if isinstance(s, pd.DataFrame):
+        # Prefer a semantically named returns column if present
         for c in ["returns", "ret", "r", "daily_return", "strategy_return"]:
             if c in s.columns:
                 s = s[c]
                 break
         else:
-            s = s.iloc[:, 0]
+            # Otherwise select the first numeric column; if none, take first column
+            num_cols = s.select_dtypes(include="number").columns
+            s = s[num_cols[0]] if len(num_cols) else s.iloc[:, 0]
 
     if not isinstance(s.index, pd.DatetimeIndex):
         s.index = pd.to_datetime(s.index, errors="coerce")
@@ -38,7 +43,14 @@ def _normalize_returns(x: pd.Series | pd.DataFrame) -> pd.Series:
         s = s.pct_change()
 
     # pro Kalendertag aggregieren
-    s = s.groupby(s.index.normalize()).apply(lambda v: (1 + v).prod() - 1)
+    def _daily_prod(v):
+        # v should be a Series; if it's a DataFrame, reduce to first numeric column
+        if isinstance(v, pd.DataFrame):
+            v = v.select_dtypes(include="number")
+            v = v.iloc[:, 0] if v.shape[1] else v.squeeze()
+        return (1 + v).prod() - 1
+
+    s = s.groupby(s.index.normalize()).apply(_daily_prod)
 
     # aufraeumen
     s = s.astype(float).replace([np.inf, -np.inf], np.nan).dropna()
