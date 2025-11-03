@@ -33,8 +33,8 @@ Projekt/
    export TIMESCALE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/market"
    export TS_TABLE="ohlcv"  # optional; defaults to ohlcv
    export MARKET_BOOTSTRAP_SYMBOLS="AAPL,GOOGL"  # optional; defaults shown
-   export MARKET_BOOTSTRAP_DURATION="5 D"        # optional
-   export MARKET_BOOTSTRAP_BAR_SIZE="5 min"      # optional
+   export MARKET_BOOTSTRAP_DURATION="1 Y"        # optional
+   export MARKET_BOOTSTRAP_BAR_SIZE="1 day"      # optional
    export MARKET_BOOTSTRAP_CACHE_TTL=900         # optional; seconds before re-fetch
    ```
    These variables tell the dashboard where to upsert live prices and which symbols to fetch automatically.  
@@ -108,6 +108,7 @@ export TS_TABLE="ohlcv"
   1. Downloads the latest OHLCV data for the configured symbols via `market_data_api.fetch_yahoo`.
   2. Saves a CSV snapshot in `Projekt/my_trading_bot/data/live_data/`.
   3. Upserts the rows into the Timescale table (`TS_TABLE`).
+- Defaults now request one year of daily bars (`duration="1 Y"`, `bar-size="1 day"`); adjust the env vars above if you need a different horizon or granularity.
 - At runtime dashboard callbacks read OHLCV data from TimescaleDB. If the DB is unreachable the app gracefully falls back to the static CSVs under `data/historical_prices/`.
 - The Yahoo fetch logic now lives solely in `data/market_data_api.py`; `data_handler.py` acts as a thin CLI wrapper so strategy code and the dashboard share identical normalization rules.
 - `market_data_api.fetch_yahoo` includes retry/backoff handling to mitigate transient yfinance hiccups before giving up.

@@ -61,8 +61,8 @@ _bootstrap_state: Dict[str, object] = {
 }
 _bootstrap_warnings: list[str] = []
 _emitted_warnings: set[str] = set()
-BOOTSTRAP_DURATION = os.environ.get("MARKET_BOOTSTRAP_DURATION", "5 D")
-BOOTSTRAP_BAR_SIZE = os.environ.get("MARKET_BOOTSTRAP_BAR_SIZE", "5 min")
+BOOTSTRAP_DURATION = os.environ.get("MARKET_BOOTSTRAP_DURATION", "1 Y")
+BOOTSTRAP_BAR_SIZE = os.environ.get("MARKET_BOOTSTRAP_BAR_SIZE", "1 day")
 
 
 def _read_env_file() -> dict[str, str]:

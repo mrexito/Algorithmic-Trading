@@ -31,8 +31,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Market data loader")
     parser.add_argument("symbol", help="Ticker symbol, e.g., AAPL")
     parser.add_argument("--provider", default="yf", choices=["yf"], help="Data provider (only 'yf' supported)")
-    parser.add_argument("--duration", default="5 D", help="Lookback period, e.g. '5 D', '1 Mo', '1 Y'")
-    parser.add_argument("--bar-size", default="5 min", help="Bar size, e.g. '1 min', '5 min', '1 day'")
+    parser.add_argument("--duration", default="1 Y", help="Lookback period, e.g. '5 D', '1 Mo', '1 Y'")
+    parser.add_argument("--bar-size", default="1 day", help="Bar size, e.g. '1 min', '5 min', '1 day'")
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
