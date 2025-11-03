@@ -4,6 +4,7 @@ import os
 import sys
 from pathlib import Path
 from typing import List, Tuple
+from glob import glob
 
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -20,6 +21,8 @@ if str(ROOT) not in sys.path:
 # --- Config ------------------------------------------------------------------
 TS_URL: str | None = os.environ.get("TIMESCALE_URL")
 DEFAULT_TABLE = os.environ.get("TS_TABLE", "ohlcv")
+# Static fallback directory with historical CSVs (per-symbol) used if DB is unavailable
+HIST_DIR = (ROOT / "Projekt" / "my_trading_bot" / "data" / "historical_prices").resolve()
 
 # Lazily create the SQLAlchemy engine so import-time doesn't explode
 _engine: Engine | None = None
@@ -33,25 +36,57 @@ def get_engine() -> Engine:
         _engine = create_engine(TS_URL, pool_pre_ping=True)
     return _engine
 
+# --- Fallback helpers ---------------------------------------------------------
+
+def _list_symbols_on_disk() -> list[str]:
+    """Return list of symbols inferred from CSV filenames in HIST_DIR (e.g., AAPL.csv)."""
+    if not HIST_DIR.exists():
+        return []
+    files = glob(str(HIST_DIR / "*.csv"))
+    symbols = []
+    for fp in files:
+        name = Path(fp).stem
+        if name:
+            symbols.append(name.upper())
+    return sorted(set(symbols))
+
+
+def _load_px_from_csv(symbol: str) -> pd.Series:
+    """Load a close-price daily series from historical CSV fallback.
+
+    Expects columns at least: datetime, close
+    """
+    fp = HIST_DIR / f"{symbol.upper()}.csv"
+    if not fp.exists():
+        return pd.Series(dtype="float64")
+    df = pd.read_csv(fp)
+    if df.empty or "datetime" not in df.columns or "close" not in df.columns:
+        return pd.Series(dtype="float64")
+    df["datetime"] = pd.to_datetime(df["datetime"], utc=True, errors="coerce")
+    df = df.dropna(subset=["datetime", "close"]).sort_values("datetime")
+    s = df.set_index("datetime")["close"].asfreq("B", method="pad").dropna()
+    s.name = symbol.upper()
+    return s
+
 # --- Public helpers used by layouts/callbacks --------------------------------
 
 def get_available_results() -> List[Tuple[str, str]]:
     """
     Return list of (symbol, strategy) pairs for the UI dropdowns.
 
-    We derive symbols from the TimescaleDB OHLCV table and pair each symbol
-    with all supported strategies in STRATEGY_LIST so the UI shows more choices.
+    Primary source: TimescaleDB (distinct symbols in OHLCV table).
+    Fallback: infer symbols from CSVs in data/historical_prices when DB is missing/unreachable.
     """
+    symbols: list[str] = []
+    # Try DB first
     try:
         eng = get_engine()
+        sql = text(f"SELECT DISTINCT symbol FROM {DEFAULT_TABLE} ORDER BY symbol;")
+        with eng.connect() as conn:
+            rows = conn.execute(sql).fetchall()
+        symbols = [str(r[0]).upper() for r in rows]
     except Exception:
-        # If DB not configured yet, keep UI working with empty choices
-        return []
-
-    sql = text(f"SELECT DISTINCT symbol FROM {DEFAULT_TABLE} ORDER BY symbol;")
-    with eng.connect() as conn:
-        rows = conn.execute(sql).fetchall()
-    symbols = [r[0] for r in rows]
+        symbols = _list_symbols_on_disk()
 
     # Pair each symbol with all strategies
     return [(sym, strat) for sym in symbols for strat in STRATEGY_LIST]
@@ -74,28 +109,35 @@ def load_returns(symbol: str, strategy: str) -> pd.Series:
     if not symbol:
         return pd.Series(dtype="float64")
 
-    eng = get_engine()
-
-    sql = text(
-        f"""
-        SELECT datetime, close
-        FROM {DEFAULT_TABLE}
-        WHERE symbol = :symbol
-        ORDER BY datetime
-        """
-    )
-    with eng.connect() as conn:
-        df = pd.read_sql(sql, conn, params={"symbol": symbol})
+    # Try DB first
+    df = pd.DataFrame()
+    try:
+        eng = get_engine()
+        sql = text(
+            f"""
+            SELECT datetime, close
+            FROM {DEFAULT_TABLE}
+            WHERE symbol = :symbol
+            ORDER BY datetime
+            """
+        )
+        with eng.connect() as conn:
+            df = pd.read_sql(sql, conn, params={"symbol": symbol})
+    except Exception:
+        df = pd.DataFrame()
 
     if df.empty:
+        # Fallback to static CSV on disk
+        px = _load_px_from_csv(symbol)
+    else:
+        # Normalize DB payload -> daily last close
+        df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+        df = df.set_index("datetime").sort_index()
+        px = df["close"].resample("B").last().dropna()
+
+    if px is None or px.empty:
         return pd.Series(dtype="float64")
 
-    # Ensure datetime index and resample to business days
-    df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
-    df = df.set_index("datetime").sort_index()
-
-    # Use last close per business day
-    px = df["close"].resample("B").last().dropna()
     rets = px.pct_change().dropna()
 
     # --- Strategy routing ---
@@ -125,8 +167,29 @@ def load_returns(symbol: str, strategy: str) -> pd.Series:
         pos = (rsi < 30).astype(int).shift(1).reindex(rets.index).fillna(0)
         out = (rets * pos).dropna()
     else:
-        # Fallback to Buy&Hold if unknown strategy is requested
         out = rets.copy()
 
     out.name = f"{symbol}-{strat}"
     return out
+
+
+# --- Backend status helper ---------------------------------------------------
+def get_backend_status() -> str:
+    """
+    Return a short status string indicating which backend is currently reachable.
+    Priority: TimescaleDB (if TIMESCALE_URL is set and connection succeeds); else CSV; else 'None'.
+    """
+    # Try DB
+    try:
+        eng = get_engine()
+        with eng.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return "TimescaleDB"
+    except Exception:
+        pass
+
+    # CSV fallback?
+    symbols = _list_symbols_on_disk()
+    if symbols:
+        return "CSV fallback"
+    return "None"

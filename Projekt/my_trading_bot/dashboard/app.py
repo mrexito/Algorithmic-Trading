@@ -24,6 +24,22 @@ app.title = "Trading Dashboard"
 
 app.layout = html.Div(
     [
+        html.Div(
+            [
+                html.Span("Data source: ", style={"opacity": 0.7, "marginRight": "4px"}),
+                html.Span(id="backend-status", style={"fontWeight": "600"}),
+                dcc.Interval(id="backend-status-ivl", interval=30_000, n_intervals=0),
+            ],
+            style={
+                "display": "flex",
+                "justifyContent": "flex-end",
+                "gap": "4px",
+                "padding": "6px 8px",
+                "fontSize": "12px",
+                "color": "#444",
+                "borderBottom": "1px solid #eee",
+            },
+        ),
         dcc.Tabs(
             id="tabs",
             value="tab1",
@@ -50,6 +66,17 @@ def render_tab_content(tab):
         return tab2_details_layout.layout
     elif tab == "tab3":
         return tab3_descriptions_layout.layout
+
+
+# Backend status updater
+@app.callback(
+    dash.dependencies.Output("backend-status", "children"),
+    dash.dependencies.Input("backend-status-ivl", "n_intervals"),
+)
+def update_backend_status(_):
+    # Import here to avoid circular imports at app startup
+    from dashboard.data_loader import get_backend_status
+    return get_backend_status()
 
 
 if __name__ == "__main__":
