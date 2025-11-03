@@ -2,23 +2,32 @@
 
 import os
 import pickle
+from pathlib import Path
+
 import pandas as pd
 import backtrader as bt
-from data.data_handler import download_and_save_data
+
+from data.market_data_api import fetch_yahoo, save_csv
 from strategies.macd_strategy import MACDStrategy
 from strategies.rsi_strategy import RSIStrategy
 from strategies.sma_strategy import SMAStrategy
 from strategies.dummy_strategy import DummyStrategy
 from strategies.ai_strategy import AIStrategy
-from strategies.dtw_strategy import DTWStrategy
 from strategies.horizontal_pattern_strategy import HorizontalPatternStrategy
 from strategies.bollinger_strategy import BollingerStrategy
 from strategies.zigzag_strategy import ZigZagStrategy
 from config.settings import PREDEFINED_SYMBOLS, CAPITAL, COMMISSION
 
+try:  # Optional dependency (dtaidistance)
+    from strategies.dtw_strategy import DTWStrategy  # type: ignore
+except Exception:
+    DTWStrategy = None
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULT_DIR = os.path.join(BASE_DIR, "results")
 DATA_DIR = os.path.join(BASE_DIR, "data", "historical_prices")
+DEFAULT_DURATION = os.environ.get("BACKTEST_DURATION", "1 Y")
+DEFAULT_BAR_SIZE = os.environ.get("BACKTEST_BAR_SIZE", "1 day")
 
 
 def run_backtests():
@@ -29,18 +38,30 @@ def run_backtests():
         "SMA": SMAStrategy,
         "DUMMY": DummyStrategy,
         "AI": AIStrategy,
-        "DTW": DTWStrategy,
         "HORIZONTAL": HorizontalPatternStrategy,
         "BOLLINGER": BollingerStrategy,
         "ZIGZAG": ZigZagStrategy,
     }
+    if DTWStrategy is not None:
+        strategies["DTW"] = DTWStrategy
+    else:
+        print("[Backtest] INFO: DTW strategy skipped (dtaidistance not installed).")
 
     os.makedirs(RESULT_DIR, exist_ok=True)
-    download_and_save_data()
+    Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
 
     for symbol in PREDEFINED_SYMBOLS:
+        df = fetch_yahoo(symbol, DEFAULT_DURATION, DEFAULT_BAR_SIZE)
+        if df.empty:
+            print(f"[Backtest] WARNING: No market data for {symbol}; skipping.")
+            continue
+
+        save_csv(df, symbol)  # keep live snapshot consistent
+        csv_path = Path(DATA_DIR) / f"{symbol}.csv"
+        df.to_csv(csv_path, index=False)
+
         df = pd.read_csv(
-            os.path.join(DATA_DIR, f"{symbol}.csv"),
+            csv_path,
             index_col="datetime",
             parse_dates=True,
         )
