@@ -9,7 +9,27 @@ strategies = sorted(set([res[1] for res in results]))
 
 layout = html.Div(
     [
+        dcc.Store(id="bootstrap-requested-symbols"),
+        dcc.Store(id="bootstrap-reload-store"),
+        html.Div(id="bootstrap-reload-dummy", style={"display": "none"}),
         html.H2("Übersicht & Vergleich"),
+        html.Div(
+            [
+                html.Label("Neue Symbole laden:"),
+                dcc.Input(
+                    id="bootstrap-symbol-input",
+                    type="text",
+                    placeholder="z.B. MSFT, AMZN",
+                    style={"marginRight": "8px", "width": "220px"},
+                ),
+                html.Button("Daten laden", id="bootstrap-symbol-button", n_clicks=0),
+                html.Span(
+                    id="bootstrap-symbol-message",
+                    style={"marginLeft": "12px", "fontStyle": "italic"},
+                ),
+            ],
+            style={"display": "flex", "alignItems": "center", "marginBottom": "12px"},
+        ),
         html.Div(
             [
                 html.Label("Wähle Symbole:"),

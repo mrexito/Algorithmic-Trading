@@ -310,29 +310,81 @@ def bootstrap_live_data(
         )
 
 
-def _bootstrap_worker(force: bool) -> None:
+def _bootstrap_worker(
+    symbols: Iterable[str] | None,
+    duration: str | None,
+    bar_size: str | None,
+    provider: str,
+    force: bool,
+) -> None:
     try:
-        bootstrap_live_data(force=force, provider=BOOTSTRAP_PROVIDER or "yf")
+        bootstrap_live_data(
+            symbols=symbols,
+            duration=duration,
+            bar_size=bar_size,
+            provider=provider,
+            force=force,
+        )
     except Exception as exc:  # pragma: no cover
         print(f"[Bootstrap] ERROR: {exc}")
         _update_bootstrap_state(message=f"Bootstrap error: {exc}", state="idle")
+    finally:
+        _update_bootstrap_state(state="idle")
 
 
-def schedule_bootstrap(*, force: bool | None = None) -> None:
-    """Kick off bootstrap in the background so Dash can start serving."""
+def schedule_bootstrap(
+    *,
+    symbols: Iterable[str] | None = None,
+    duration: str | None = None,
+    bar_size: str | None = None,
+    force: bool | None = None,
+) -> None:
+    """Kick off bootstrap in the background (default symbols or custom list)."""
+    provider = BOOTSTRAP_PROVIDER or "yf"
+    target_duration = duration or BOOTSTRAP_DURATION
+    target_bar_size = bar_size or BOOTSTRAP_BAR_SIZE
+
+    if symbols is None:
+        target_symbols = BOOTSTRAP_SYMBOLS
+        extra_warnings: list[str] = []
+    else:
+        target_symbols, extra_warnings = _normalize_symbols(symbols)
+
+    for warning in extra_warnings:
+        if warning in _emitted_warnings:
+            continue
+        print(f"[Bootstrap] WARNING: {warning}")
+        _emitted_warnings.add(warning)
+
     with _bootstrap_lock:
         global _bootstrap_thread
+        eff_force = bool(force or os.environ.get("MARKET_BOOTSTRAP_FORCE"))
+        if symbols is not None and force is None:
+            eff_force = True  # always fetch freshly for ad-hoc requests
+
         if _bootstrap_thread and _bootstrap_thread.is_alive():
+            print("[Bootstrap] Another job already running; request ignored.")
+            _update_bootstrap_state(
+                state="running",
+                message="Bootstrap already running.",
+            )
             return
-        effective_force = bool(force or os.environ.get("MARKET_BOOTSTRAP_FORCE"))
-        if not BOOTSTRAP_SYMBOLS:
+
+        if not target_symbols:
             _update_bootstrap_state(
                 state="idle",
                 message="Bootstrap skipped (no symbols configured).",
                 symbols=[],
             )
             return
-        if _should_skip_bootstrap(BOOTSTRAP_SYMBOLS, BOOTSTRAP_DURATION, BOOTSTRAP_BAR_SIZE, BOOTSTRAP_PROVIDER, effective_force):
+
+        if _should_skip_bootstrap(
+            target_symbols,
+            target_duration,
+            target_bar_size,
+            provider,
+            eff_force,
+        ):
             cached = _load_cached_run()
             ts = cached.get("timestamp")
             stamp = (
@@ -342,25 +394,35 @@ def schedule_bootstrap(*, force: bool | None = None) -> None:
             _update_bootstrap_state(
                 state="cached",
                 message=f"Bootstrap cached (last run {stamp}).",
-                symbols=list(BOOTSTRAP_SYMBOLS),
+                symbols=list(target_symbols),
                 last_success=stamp,
             )
             print(f"[Bootstrap] Cache hit from {stamp}; background fetch skipped.")
             return
+
         _update_bootstrap_state(
             state="scheduled",
-            message=f"Bootstrapping queued for {', '.join(BOOTSTRAP_SYMBOLS)}",
-            symbols=list(BOOTSTRAP_SYMBOLS),
+            message=f"Bootstrapping queued for {', '.join(target_symbols)}",
+            symbols=list(target_symbols),
         )
         thread = threading.Thread(
             target=_bootstrap_worker,
-            kwargs={"force": effective_force},
+            kwargs={
+                "symbols": target_symbols,
+                "duration": target_duration,
+                "bar_size": target_bar_size,
+                "provider": provider,
+                "force": eff_force,
+            },
             daemon=True,
             name="bootstrap-loader",
         )
         _bootstrap_thread = thread
         thread.start()
-        print(f"[Bootstrap] Background fetch scheduled for {', '.join(BOOTSTRAP_SYMBOLS)} (duration={BOOTSTRAP_DURATION}, bar={BOOTSTRAP_BAR_SIZE}).")
+        print(
+            f"[Bootstrap] Background fetch scheduled for {', '.join(target_symbols)} "
+            f"(duration={target_duration}, bar={target_bar_size})."
+        )
 
 # --- Fallback helpers ---------------------------------------------------------
 

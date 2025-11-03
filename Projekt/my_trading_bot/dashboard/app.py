@@ -5,6 +5,7 @@ import sys
 
 import dash
 from dash import dcc, html
+from dash.dependencies import Input, Output
 
 # Allow running the script directly (python dashboard/app.py) by making sure the package root is on sys.path.
 if __package__ in (None, ""):
@@ -79,6 +80,19 @@ def update_backend_status(_):
     from dashboard.data_loader import get_backend_status
     return get_backend_status()
 
+app.clientside_callback(
+    """
+    function(ts){
+        if(ts){
+            window.location.reload();
+        }
+        return "";
+    }
+    """,
+    Output("bootstrap-reload-dummy", "children"),
+    Input("bootstrap-reload-store", "data"),
+    prevent_initial_call=True,
+)
 
 if __name__ == "__main__":
     if os.environ.get("WERKZEUG_RUN_MAIN") in (None, "true"):

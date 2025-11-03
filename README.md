@@ -113,6 +113,7 @@ export TS_TABLE="ohlcv"
 - The Yahoo fetch logic now lives solely in `data/market_data_api.py`; `data_handler.py` acts as a thin CLI wrapper so strategy code and the dashboard share identical normalization rules.
 - `market_data_api.fetch_yahoo` includes retry/backoff handling to mitigate transient yfinance hiccups before giving up.
 - Bootstrapping now runs in a background thread so the Dash UI comes up immediately. The header status shows `Bootstrapping …` until the fetch finishes (or reports cached data).
+- Tab 1 now offers an input field to queue additional symbols (comma- or space-separated). Triggering the button runs the same bootstrap routine in the background, stores new data in TimescaleDB, and refreshes the dropdowns once rows are available.
 - Successful runs persist a small cache marker (`data/live_data/.bootstrap_state.json`). If Dash reloads within `MARKET_BOOTSTRAP_CACHE_TTL` seconds with the same symbols & settings, the bootstrap is skipped and the status reports the last success timestamp.
 
 You can rerun the bootstrap manually at any time by executing:
