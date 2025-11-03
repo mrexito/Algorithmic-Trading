@@ -1,0 +1,14 @@
+.venv/
+.vscode/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+*.log
+*.csv
+*.pkl
+*.pickle
+*.ipynb_checkpoints/
+/.DS_Store

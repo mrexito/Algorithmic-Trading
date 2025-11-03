@@ -28,7 +28,16 @@ Projekt/
    ```bash
    python Projekt/my_trading_bot/backtest_runner.py
    ```
-3. Start the dashboard:
+3. (Optional) Configure the live market data backend by exporting:
+   ```bash
+   export TIMESCALE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/market"
+   export TS_TABLE="ohlcv"  # optional; defaults to ohlcv
+   export MARKET_BOOTSTRAP_SYMBOLS="AAPL,GOOGL"  # optional; defaults shown
+   export MARKET_BOOTSTRAP_DURATION="5 D"        # optional
+   export MARKET_BOOTSTRAP_BAR_SIZE="5 min"      # optional
+   ```
+   These variables tell the dashboard where to upsert live prices and which symbols to fetch automatically.
+4. Start the dashboard:
    ```bash
    python Projekt/my_trading_bot/dashboard/app.py
    ```
@@ -63,6 +72,8 @@ This will:
 2. Save a CSV copy under `data/live_data/`.
 3. Upsert all data directly into the **TimescaleDB** table `ohlcv`.
 
+> When the dashboard boots, it calls the same API automatically for the symbols defined in `MARKET_BOOTSTRAP_SYMBOLS` (defaults: `AAPL, GOOGL`). If the API call fails, the app continues to run using the most recent CSV/DB data without crashing.
+
 ---
 
 ### 2. TimescaleDB Integration
@@ -91,11 +102,16 @@ export TS_TABLE="ohlcv"
 ---
 
 ### 3. Dashboard Data Flow
-The **Dash web app** now loads data **directly from the TimescaleDB** instead of local CSVs.  
-When you click **“Fetch & Upsert”**, it:
-1. Downloads the latest OHLCV data from Yahoo Finance.
-2. Stores it in TimescaleDB.
-3. Displays a line chart of the closing prices.
+- On startup the Dash app calls `bootstrap_live_data()` from `dashboard/data_loader.py`, which:
+  1. Downloads the latest OHLCV data for the configured symbols via `market_data_api.fetch_yahoo`.
+  2. Saves a CSV snapshot in `Projekt/my_trading_bot/data/live_data/`.
+  3. Upserts the rows into the Timescale table (`TS_TABLE`).
+- At runtime dashboard callbacks read OHLCV data from TimescaleDB. If the DB is unreachable the app gracefully falls back to the static CSVs under `data/historical_prices/`.
+
+You can rerun the bootstrap manually at any time by executing:
+```bash
+python -c "from dashboard.data_loader import bootstrap_live_data; bootstrap_live_data(['AAPL','GOOGL'])"
+```
 
 ---
 
@@ -109,6 +125,5 @@ Or preview the last few entries:
 ```bash
 docker exec -it timescale psql -U postgres -d market -c "SELECT * FROM ohlcv ORDER BY datetime DESC LIMIT 5;"
 ```
-
 
 

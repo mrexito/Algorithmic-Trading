@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import Iterable, List, Tuple
 from glob import glob
 
 import pandas as pd
@@ -15,8 +15,10 @@ STRATEGY_LIST = ["Buy&Hold", "SMA(50/200)", "EMA(12/26)", "RSI(14)"]
 
 # Make sure repo root is importable (keeps other relative imports working)
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+PROJECT_ROOT = ROOT.parent
+for path in (str(ROOT), str(PROJECT_ROOT)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 # --- Config ------------------------------------------------------------------
 TS_URL: str | None = os.environ.get("TIMESCALE_URL")
@@ -35,6 +37,84 @@ def get_engine() -> Engine:
             )
         _engine = create_engine(TS_URL, pool_pre_ping=True)
     return _engine
+
+# --- Startup bootstrap -------------------------------------------------------
+BOOTSTRAP_SYMBOLS = tuple(
+    sym.strip().upper()
+    for sym in os.environ.get("MARKET_BOOTSTRAP_SYMBOLS", "AAPL,GOOGL").split(",")
+    if sym.strip()
+)
+BOOTSTRAP_DURATION = os.environ.get("MARKET_BOOTSTRAP_DURATION", "5 D")
+BOOTSTRAP_BAR_SIZE = os.environ.get("MARKET_BOOTSTRAP_BAR_SIZE", "5 min")
+_bootstrap_completed = False
+
+
+def bootstrap_live_data(
+    symbols: Iterable[str] | None = None,
+    duration: str | None = None,
+    bar_size: str | None = None,
+    provider: str = "yf",
+) -> None:
+    """Fetch live data for default symbols and upsert into the configured backend."""
+    global _bootstrap_completed
+    if _bootstrap_completed:
+        return
+
+    # Resolve inputs and sanitize symbol list
+    raw_symbols = list(symbols) if symbols is not None else list(BOOTSTRAP_SYMBOLS)
+    parsed_symbols = [sym.strip().upper() for sym in raw_symbols if sym and sym.strip()]
+    if not parsed_symbols:
+        return
+    duration = duration or BOOTSTRAP_DURATION
+    bar_size = bar_size or BOOTSTRAP_BAR_SIZE
+    if provider != "yf":
+        print(f"[Bootstrap] Unsupported provider '{provider}'. Skipping bootstrap.")
+        _bootstrap_completed = True
+        return
+
+    try:
+        from Projekt.my_trading_bot.data import market_data_api
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"[Bootstrap] Unable to import market data API: {exc}")
+        return
+
+    engine: Engine | None = None
+    if TS_URL:
+        try:
+            engine = get_engine()
+        except Exception as exc:
+            print(f"[Bootstrap] Database unavailable ({exc}). Proceeding without TimescaleDB.")
+            engine = None
+    else:
+        print("[Bootstrap] TIMESCALE_URL not set. Data will only be cached as CSV snapshots.")
+
+    print(f"[Bootstrap] Loading symbols {', '.join(parsed_symbols)} (duration={duration}, bar={bar_size})")
+    for symbol in parsed_symbols:
+        try:
+            df = market_data_api.fetch_yahoo(symbol, duration, bar_size)
+        except Exception as exc:  # pragma: no cover - network dependency
+            print(f"[Bootstrap] ERROR fetching {symbol}: {exc}")
+            continue
+
+        if df.empty:
+            print(f"[Bootstrap] No data returned for {symbol}.")
+            continue
+
+        try:
+            path = market_data_api.save_csv(df, symbol)
+            print(f"[Bootstrap] Cached {symbol} snapshot at {path} (rows={len(df)}).")
+        except Exception as exc:
+            print(f"[Bootstrap] WARNING: Failed to cache CSV for {symbol}: {exc}")
+
+        if engine is None:
+            continue
+        try:
+            rows = market_data_api.upsert_timescale(df, engine, DEFAULT_TABLE)
+            print(f"[Bootstrap] Upserted {rows} rows for {symbol} into table '{DEFAULT_TABLE}'.")
+        except Exception as exc:  # pragma: no cover - DB specific
+            print(f"[Bootstrap] ERROR upserting {symbol}: {exc}")
+
+    _bootstrap_completed = True
 
 # --- Fallback helpers ---------------------------------------------------------
 

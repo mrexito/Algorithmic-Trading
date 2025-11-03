@@ -18,6 +18,9 @@ from dashboard.layouts import (
     tab2_details_layout,
     tab3_descriptions_layout,
 )
+from dashboard.data_loader import bootstrap_live_data
+
+bootstrap_live_data()
 
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "Trading Dashboard"

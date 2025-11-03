@@ -89,6 +89,9 @@ def fetch_yahoo(symbol: str, duration: str, bar_size: str) -> pd.DataFrame:
     }
     df = df.rename(columns=rename_map)
 
+    # yfinance may expose both Close and Adj Close -> drop duplicates after renaming
+    df = df.loc[:, ~df.columns.duplicated()]
+
     # Reset index to get datetime column
     df = df.reset_index().rename(columns={"index": "datetime", "Datetime": "datetime", "Date": "datetime"})
 
