@@ -18,9 +18,7 @@ from dashboard.layouts import (
     tab2_details_layout,
     tab3_descriptions_layout,
 )
-from dashboard.data_loader import bootstrap_live_data
-
-bootstrap_live_data()
+from dashboard.data_loader import schedule_bootstrap
 
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "Trading Dashboard"
@@ -83,6 +81,8 @@ def update_backend_status(_):
 
 
 if __name__ == "__main__":
+    if os.environ.get("WERKZEUG_RUN_MAIN") in (None, "true"):
+        schedule_bootstrap()
     from dashboard.callbacks import (
         tab1_overview_callbacks,
         tab2_details_callbacks,

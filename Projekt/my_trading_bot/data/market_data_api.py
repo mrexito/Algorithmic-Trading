@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import time
 from datetime import datetime, timezone
 from typing import Tuple
 
@@ -55,7 +56,15 @@ def _map_yf_params(duration: str, bar_size: str) -> Tuple[str, str]:
 
 # --- Public API ------------------------------------------------------------
 
-def fetch_yahoo(symbol: str, duration: str, bar_size: str) -> pd.DataFrame:
+def fetch_yahoo(
+    symbol: str,
+    duration: str,
+    bar_size: str,
+    *,
+    max_attempts: int = 3,
+    base_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+) -> pd.DataFrame:
     """Fetch OHLCV from Yahoo Finance and normalize columns.
 
     Returns a DataFrame with columns: datetime, open, high, low, close, volume, symbol
@@ -65,8 +74,29 @@ def fetch_yahoo(symbol: str, duration: str, bar_size: str) -> pd.DataFrame:
 
     period, interval = _map_yf_params(duration, bar_size)
 
-    # yfinance sometimes returns index tz-aware; convert to UTC
-    df = yf.download(tickers=symbol, period=period, interval=interval, auto_adjust=False, progress=False)
+    if max_attempts < 1:
+        max_attempts = 1
+
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            df = yf.download(
+                tickers=symbol,
+                period=period,
+                interval=interval,
+                auto_adjust=False,
+                progress=False,
+            )
+            break
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= max_attempts:
+                raise RuntimeError(f"Failed to fetch data for {symbol}: {exc}") from exc
+            delay = base_delay * (backoff_factor ** (attempt - 1))
+            time.sleep(delay)
+    else:
+        # Should never hit but keeps type checker happy
+        df = pd.DataFrame()
 
     if df is None or df.empty:
         return pd.DataFrame(columns=REQUIRED_COLS)
@@ -88,6 +118,9 @@ def fetch_yahoo(symbol: str, duration: str, bar_size: str) -> pd.DataFrame:
         "volume": "volume",
     }
     df = df.rename(columns=rename_map)
+
+    # yfinance may expose both Close and Adj Close -> drop duplicates after renaming
+    df = df.loc[:, ~df.columns.duplicated()]
 
     # yfinance may expose both Close and Adj Close -> drop duplicates after renaming
     df = df.loc[:, ~df.columns.duplicated()]

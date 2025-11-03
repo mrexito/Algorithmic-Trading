@@ -35,8 +35,10 @@ Projekt/
    export MARKET_BOOTSTRAP_SYMBOLS="AAPL,GOOGL"  # optional; defaults shown
    export MARKET_BOOTSTRAP_DURATION="5 D"        # optional
    export MARKET_BOOTSTRAP_BAR_SIZE="5 min"      # optional
+   export MARKET_BOOTSTRAP_CACHE_TTL=900         # optional; seconds before re-fetch
    ```
-   These variables tell the dashboard where to upsert live prices and which symbols to fetch automatically.
+   These variables tell the dashboard where to upsert live prices and which symbols to fetch automatically.  
+   You can also place the same keys inside a project-level `.env`; the loader reads it on startup, normalizes symbols (uppercase, duplicates removed), and warns if the list is empty or malformed.
 4. Start the dashboard:
    ```bash
    python Projekt/my_trading_bot/dashboard/app.py
@@ -107,6 +109,10 @@ export TS_TABLE="ohlcv"
   2. Saves a CSV snapshot in `Projekt/my_trading_bot/data/live_data/`.
   3. Upserts the rows into the Timescale table (`TS_TABLE`).
 - At runtime dashboard callbacks read OHLCV data from TimescaleDB. If the DB is unreachable the app gracefully falls back to the static CSVs under `data/historical_prices/`.
+- The Yahoo fetch logic now lives solely in `data/market_data_api.py`; `data_handler.py` acts as a thin CLI wrapper so strategy code and the dashboard share identical normalization rules.
+- `market_data_api.fetch_yahoo` includes retry/backoff handling to mitigate transient yfinance hiccups before giving up.
+- Bootstrapping now runs in a background thread so the Dash UI comes up immediately. The header status shows `Bootstrapping …` until the fetch finishes (or reports cached data).
+- Successful runs persist a small cache marker (`data/live_data/.bootstrap_state.json`). If Dash reloads within `MARKET_BOOTSTRAP_CACHE_TTL` seconds with the same symbols & settings, the bootstrap is skipped and the status reports the last success timestamp.
 
 You can rerun the bootstrap manually at any time by executing:
 ```bash
@@ -125,5 +131,3 @@ Or preview the last few entries:
 ```bash
 docker exec -it timescale psql -U postgres -d market -c "SELECT * FROM ohlcv ORDER BY datetime DESC LIMIT 5;"
 ```
-
-

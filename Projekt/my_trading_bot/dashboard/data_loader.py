@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import os
 import sys
+import json
+import threading
+import time
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Dict, Iterable, List, Tuple
 from glob import glob
+from datetime import datetime, timezone
 
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -25,6 +29,12 @@ TS_URL: str | None = os.environ.get("TIMESCALE_URL")
 DEFAULT_TABLE = os.environ.get("TS_TABLE", "ohlcv")
 # Static fallback directory with historical CSVs (per-symbol) used if DB is unavailable
 HIST_DIR = (ROOT / "Projekt" / "my_trading_bot" / "data" / "historical_prices").resolve()
+BOOTSTRAP_STATE_FILE = (ROOT / "Projekt" / "my_trading_bot" / "data" / "live_data" / ".bootstrap_state.json").resolve()
+try:
+    BOOTSTRAP_CACHE_TTL = int(os.environ.get("MARKET_BOOTSTRAP_CACHE_TTL", "900"))
+except (TypeError, ValueError):
+    BOOTSTRAP_CACHE_TTL = 900
+BOOTSTRAP_PROVIDER = (os.environ.get("MARKET_BOOTSTRAP_PROVIDER", "yf").strip().lower() or "yf")
 
 # Lazily create the SQLAlchemy engine so import-time doesn't explode
 _engine: Engine | None = None
@@ -39,14 +49,145 @@ def get_engine() -> Engine:
     return _engine
 
 # --- Startup bootstrap -------------------------------------------------------
-BOOTSTRAP_SYMBOLS = tuple(
-    sym.strip().upper()
-    for sym in os.environ.get("MARKET_BOOTSTRAP_SYMBOLS", "AAPL,GOOGL").split(",")
-    if sym.strip()
-)
+_bootstrap_lock = threading.RLock()
+_bootstrap_thread: threading.Thread | None = None
+_bootstrap_state: Dict[str, object] = {
+    "state": "idle",
+    "symbols": [],
+    "message": "",
+    "started_at": None,
+    "finished_at": None,
+    "last_success": None,
+}
+_bootstrap_warnings: list[str] = []
+_emitted_warnings: set[str] = set()
 BOOTSTRAP_DURATION = os.environ.get("MARKET_BOOTSTRAP_DURATION", "5 D")
 BOOTSTRAP_BAR_SIZE = os.environ.get("MARKET_BOOTSTRAP_BAR_SIZE", "5 min")
-_bootstrap_completed = False
+
+
+def _read_env_file() -> dict[str, str]:
+    """Simple .env reader to pull bootstrap overrides without extra deps."""
+    candidates = [
+        PROJECT_ROOT / ".env",
+        ROOT / ".env",
+    ]
+    data: dict[str, str] = {}
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                data[key.strip()] = value.strip().strip('"').strip("'")
+        except OSError:
+            continue
+    return data
+
+
+def _normalize_symbols(raw_symbols: Iterable[str]) -> Tuple[Tuple[str, ...], list[str]]:
+    """Return sanitized symbols and validation warnings."""
+    warnings: list[str] = []
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for token in raw_symbols:
+        token = (token or "").strip()
+        if not token:
+            warnings.append("Encountered empty symbol entry; ignoring.")
+            continue
+        symbol = token.upper()
+        if any(ch for ch in symbol if not (ch.isalnum() or ch in {".", "-", "_"})):
+            warnings.append(f"Ignoring invalid symbol '{token}'.")
+            continue
+        if symbol in seen:
+            warnings.append(f"Duplicate symbol '{symbol}' ignored.")
+            continue
+        seen.add(symbol)
+        normalized.append(symbol)
+    if not normalized:
+        warnings.append("Bootstrap symbol list resolved to empty; skipping bootstrap.")
+    return tuple(normalized), warnings
+
+
+def _load_bootstrap_symbols() -> Tuple[Tuple[str, ...], list[str], str]:
+    """Resolve bootstrap symbols from environment/.env/defaults."""
+    env_file_values = _read_env_file()
+    source = "default"
+    raw = os.environ.get("MARKET_BOOTSTRAP_SYMBOLS")
+    if raw:
+        source = "env"
+    else:
+        raw = env_file_values.get("MARKET_BOOTSTRAP_SYMBOLS", "AAPL,GOOGL")
+        if "MARKET_BOOTSTRAP_SYMBOLS" in env_file_values:
+            source = ".env"
+    candidates = [part for part in raw.replace(";", ",").split(",")]
+    symbols, warnings = _normalize_symbols(candidates)
+    return symbols, warnings, source
+
+
+BOOTSTRAP_SYMBOLS, _bootstrap_warning_list, BOOTSTRAP_SOURCE = _load_bootstrap_symbols()
+_bootstrap_warnings.extend(_bootstrap_warning_list)
+
+
+def _load_cached_run() -> dict[str, object]:
+    if not BOOTSTRAP_STATE_FILE.exists():
+        return {}
+    try:
+        return json.loads(BOOTSTRAP_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _write_cached_run(payload: dict[str, object]) -> None:
+    try:
+        BOOTSTRAP_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        BOOTSTRAP_STATE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except Exception as exc:
+        print(f"[Bootstrap] WARNING: Unable to persist bootstrap cache ({exc}).")
+
+
+def _should_skip_bootstrap(symbols: Iterable[str], duration: str, bar_size: str, provider: str, force: bool) -> bool:
+    if force:
+        return False
+    meta = _load_cached_run()
+    ts = meta.get("timestamp")
+    cached_symbols = tuple(meta.get("symbols", []))
+    if not ts or not cached_symbols:
+        return False
+    try:
+        ts = float(ts)
+    except (TypeError, ValueError):
+        return False
+    age = time.time() - ts
+    if age > BOOTSTRAP_CACHE_TTL:
+        return False
+    if tuple(symbols) != cached_symbols:
+        return False
+    if duration != meta.get("duration") or bar_size != meta.get("bar_size"):
+        return False
+    if provider != str(meta.get("provider", "")).lower():
+        return False
+    return True
+
+
+def _update_bootstrap_state(**kwargs: object) -> None:
+    with _bootstrap_lock:
+        _bootstrap_state.update(kwargs)
+
+
+def get_bootstrap_status() -> str:
+    state = _bootstrap_state.get("state", "idle")
+    message = _bootstrap_state.get("message") or ""
+    if state in {"running", "scheduled"}:
+        return message or "Bootstrapping data…"
+    last_success = _bootstrap_state.get("last_success")
+    if last_success:
+        return f"TimescaleDB (bootstrap @ {last_success})"
+    if _bootstrap_warnings:
+        return _bootstrap_warnings[-1]
+    return message or "Idle"
 
 
 def bootstrap_live_data(
@@ -54,28 +195,54 @@ def bootstrap_live_data(
     duration: str | None = None,
     bar_size: str | None = None,
     provider: str = "yf",
+    *,
+    force: bool = False,
 ) -> None:
     """Fetch live data for default symbols and upsert into the configured backend."""
-    global _bootstrap_completed
-    if _bootstrap_completed:
-        return
-
-    # Resolve inputs and sanitize symbol list
-    raw_symbols = list(symbols) if symbols is not None else list(BOOTSTRAP_SYMBOLS)
-    parsed_symbols = [sym.strip().upper() for sym in raw_symbols if sym and sym.strip()]
-    if not parsed_symbols:
-        return
     duration = duration or BOOTSTRAP_DURATION
     bar_size = bar_size or BOOTSTRAP_BAR_SIZE
-    if provider != "yf":
+
+    if symbols is None:
+        resolved_symbols = BOOTSTRAP_SYMBOLS
+    else:
+        resolved_symbols, extra_warnings = _normalize_symbols(symbols)
+        if extra_warnings:
+            _bootstrap_warnings.extend(extra_warnings)
+    for warning in _bootstrap_warnings:
+        if warning in _emitted_warnings:
+            continue
+        print(f"[Bootstrap] WARNING: {warning}")
+        _emitted_warnings.add(warning)
+    if not resolved_symbols:
+        _update_bootstrap_state(state="idle", message="Bootstrap skipped (no symbols).", symbols=[])
+        return
+
+    if provider.lower() != "yf":
         print(f"[Bootstrap] Unsupported provider '{provider}'. Skipping bootstrap.")
-        _bootstrap_completed = True
+        _update_bootstrap_state(state="idle", message="Bootstrap skipped (provider).", symbols=[])
         return
 
     try:
         from Projekt.my_trading_bot.data import market_data_api
     except Exception as exc:  # pragma: no cover - defensive
         print(f"[Bootstrap] Unable to import market data API: {exc}")
+        return
+
+    provider_key = provider.lower()
+    if _should_skip_bootstrap(resolved_symbols, duration, bar_size, provider_key, force):
+        cached = _load_cached_run()
+        ts = cached.get("timestamp")
+        stamp = (
+            datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%MZ")
+            if isinstance(ts, (int, float)) else "recently"
+        )
+        _update_bootstrap_state(
+            state="cached",
+            message=f"Bootstrap skipped (cache hit {stamp}).",
+            symbols=list(resolved_symbols),
+            last_success=stamp,
+        )
+        print(f"[Bootstrap] Using cached run from {stamp}; skipping fetch.")
         return
 
     engine: Engine | None = None
@@ -88,8 +255,15 @@ def bootstrap_live_data(
     else:
         print("[Bootstrap] TIMESCALE_URL not set. Data will only be cached as CSV snapshots.")
 
-    print(f"[Bootstrap] Loading symbols {', '.join(parsed_symbols)} (duration={duration}, bar={bar_size})")
-    for symbol in parsed_symbols:
+    _update_bootstrap_state(
+        state="running",
+        message=f"Bootstrapping: {', '.join(resolved_symbols)}",
+        symbols=list(resolved_symbols),
+        started_at=time.time(),
+    )
+    print(f"[Bootstrap] Loading symbols {', '.join(resolved_symbols)} (duration={duration}, bar={bar_size})")
+    success = False
+    for symbol in resolved_symbols:
         try:
             df = market_data_api.fetch_yahoo(symbol, duration, bar_size)
         except Exception as exc:  # pragma: no cover - network dependency
@@ -111,10 +285,82 @@ def bootstrap_live_data(
         try:
             rows = market_data_api.upsert_timescale(df, engine, DEFAULT_TABLE)
             print(f"[Bootstrap] Upserted {rows} rows for {symbol} into table '{DEFAULT_TABLE}'.")
+            success = True
         except Exception as exc:  # pragma: no cover - DB specific
             print(f"[Bootstrap] ERROR upserting {symbol}: {exc}")
 
-    _bootstrap_completed = True
+    finished_at = time.time()
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%MZ")
+    _update_bootstrap_state(
+        state="idle",
+        message="Bootstrap complete." if success else "Bootstrap finished with issues.",
+        symbols=list(resolved_symbols),
+        finished_at=finished_at,
+        last_success=stamp if success else _bootstrap_state.get("last_success"),
+    )
+    if success:
+        _write_cached_run(
+            {
+                "timestamp": finished_at,
+                "symbols": list(resolved_symbols),
+                "duration": duration,
+                "bar_size": bar_size,
+                "provider": provider_key,
+            }
+        )
+
+
+def _bootstrap_worker(force: bool) -> None:
+    try:
+        bootstrap_live_data(force=force, provider=BOOTSTRAP_PROVIDER or "yf")
+    except Exception as exc:  # pragma: no cover
+        print(f"[Bootstrap] ERROR: {exc}")
+        _update_bootstrap_state(message=f"Bootstrap error: {exc}", state="idle")
+
+
+def schedule_bootstrap(*, force: bool | None = None) -> None:
+    """Kick off bootstrap in the background so Dash can start serving."""
+    with _bootstrap_lock:
+        global _bootstrap_thread
+        if _bootstrap_thread and _bootstrap_thread.is_alive():
+            return
+        effective_force = bool(force or os.environ.get("MARKET_BOOTSTRAP_FORCE"))
+        if not BOOTSTRAP_SYMBOLS:
+            _update_bootstrap_state(
+                state="idle",
+                message="Bootstrap skipped (no symbols configured).",
+                symbols=[],
+            )
+            return
+        if _should_skip_bootstrap(BOOTSTRAP_SYMBOLS, BOOTSTRAP_DURATION, BOOTSTRAP_BAR_SIZE, BOOTSTRAP_PROVIDER, effective_force):
+            cached = _load_cached_run()
+            ts = cached.get("timestamp")
+            stamp = (
+                datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%MZ")
+                if isinstance(ts, (int, float)) else "recently"
+            )
+            _update_bootstrap_state(
+                state="cached",
+                message=f"Bootstrap cached (last run {stamp}).",
+                symbols=list(BOOTSTRAP_SYMBOLS),
+                last_success=stamp,
+            )
+            print(f"[Bootstrap] Cache hit from {stamp}; background fetch skipped.")
+            return
+        _update_bootstrap_state(
+            state="scheduled",
+            message=f"Bootstrapping queued for {', '.join(BOOTSTRAP_SYMBOLS)}",
+            symbols=list(BOOTSTRAP_SYMBOLS),
+        )
+        thread = threading.Thread(
+            target=_bootstrap_worker,
+            kwargs={"force": effective_force},
+            daemon=True,
+            name="bootstrap-loader",
+        )
+        _bootstrap_thread = thread
+        thread.start()
+        print(f"[Bootstrap] Background fetch scheduled for {', '.join(BOOTSTRAP_SYMBOLS)} (duration={BOOTSTRAP_DURATION}, bar={BOOTSTRAP_BAR_SIZE}).")
 
 # --- Fallback helpers ---------------------------------------------------------
 
@@ -259,11 +505,19 @@ def get_backend_status() -> str:
     Return a short status string indicating which backend is currently reachable.
     Priority: TimescaleDB (if TIMESCALE_URL is set and connection succeeds); else CSV; else 'None'.
     """
+    state = _bootstrap_state.get("state", "idle")
+    if state in {"scheduled", "running", "cached"}:
+        return get_bootstrap_status()
+    last_success = _bootstrap_state.get("last_success")
+    warning = _bootstrap_warnings[-1] if _bootstrap_warnings else ""
+
     # Try DB
     try:
         eng = get_engine()
         with eng.connect() as conn:
             conn.execute(text("SELECT 1"))
+        if last_success:
+            return f"TimescaleDB (bootstrap @ {last_success})"
         return "TimescaleDB"
     except Exception:
         pass
@@ -271,5 +525,6 @@ def get_backend_status() -> str:
     # CSV fallback?
     symbols = _list_symbols_on_disk()
     if symbols:
-        return "CSV fallback"
-    return "None"
+        suffix = f" • {warning}" if warning else ""
+        return f"CSV fallback{suffix}"
+    return warning or "None"

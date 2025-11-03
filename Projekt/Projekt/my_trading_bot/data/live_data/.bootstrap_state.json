@@ -1,0 +1,10 @@
+{
+  "timestamp": 1762181260.037363,
+  "symbols": [
+    "AAPL",
+    "GOOGL"
+  ],
+  "duration": "5 D",
+  "bar_size": "5 min",
+  "provider": "yf"
+}
