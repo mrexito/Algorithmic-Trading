@@ -51,7 +51,7 @@ Projekt/
 This prototype uses local CSV files for historical price data and stores backtest results in `results/` as pickled Pandas Series.
 
 
-## 🔗 Data Source & Database Integration
+## Data Source & Database Integration
 
 This project now supports **live market data fetching via Yahoo Finance** and **automatic storage in TimescaleDB** (running inside Docker).
 
@@ -81,25 +81,54 @@ This will:
 ### 2. TimescaleDB Integration
 The project uses a **TimescaleDB container** to store OHLCV (Open, High, Low, Close, Volume) data.
 
-#### 🐳 Docker setup
-Make sure your Timescale container is running:
-```bash
-docker ps
-```
-If not, start it:
-```bash
-docker run -d --name timescale -e POSTGRES_PASSWORD=postgres -p 5432:5432 timescale/timescaledb:latest-pg15
-```
+#### Docker & TimescaleDB setup
+Follow these one-time steps to bootstrap a TimescaleDB instance inside Docker:
 
-#### 🔧 Environment Configuration
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine on Linux) and make sure the daemon is running.
+2. Pull the TimescaleDB image and create a persistent volume so your database survives container restarts:
+   ```bash
+   docker pull timescale/timescaledb:latest-pg15
+   docker volume create timescale_data
+   ```
+3. Launch the container (adjust the password or port if needed):
+   ```bash
+   docker run -d \
+     --name timescale \
+     -e POSTGRES_PASSWORD=postgres \
+     -p 5432:5432 \
+     -v timescale_data:/var/lib/postgresql/data \
+     timescale/timescaledb:latest-pg15
+   ```
+4. Create the `market` database, enable the Timescale extension and provision the `ohlcv` table:
+   ```bash
+   docker exec -it timescale psql -U postgres -c "CREATE DATABASE market;"
+   docker exec -it timescale psql -U postgres -d market -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+   docker exec -it timescale psql -U postgres -d market -c "
+     CREATE TABLE IF NOT EXISTS ohlcv (
+       datetime TIMESTAMPTZ NOT NULL,
+       symbol TEXT NOT NULL,
+       open DOUBLE PRECISION,
+       high DOUBLE PRECISION,
+       low DOUBLE PRECISION,
+       close DOUBLE PRECISION,
+       volume DOUBLE PRECISION,
+       PRIMARY KEY (datetime, symbol)
+     );
+     SELECT create_hypertable('ohlcv', 'datetime', if_not_exists => TRUE);
+   "
+   ```
+5. Verify the container is healthy:
+   ```bash
+   docker ps --filter name=timescale
+   ```
+
+#### Environment Configuration
 Set up the database connection for the dashboard and data loader:
 
 ```bash
 export TIMESCALE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/market"
 export TS_TABLE="ohlcv"
 ```
-
-> 💡 You can define these in a `.env` file for convenience.
 
 ---
 
