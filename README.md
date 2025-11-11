@@ -147,7 +147,7 @@ export TS_TABLE="ohlcv"
 
 You can rerun the bootstrap manually at any time by executing:
 ```bash
-python -c "from dashboard.data_loader import bootstrap_live_data; bootstrap_live_data(['AAPL','GOOGL'])"
+python -c "from my_trading_bot.dashboard.data_loader import bootstrap_live_data; bootstrap_live_data(['AAPL','GOOGL'])"
 ```
 
 ---
@@ -162,3 +162,50 @@ Or preview the last few entries:
 ```bash
 docker exec -it timescale psql -U postgres -d market -c "SELECT * FROM ohlcv ORDER BY datetime DESC LIMIT 5;"
 ```
+
+### 5. Datenpersistenz & Interaktion
+Die Datenpipeline besteht aus klar getrennten Schritten, die zusammen sicherstellen, dass neue Kurse zuverlässig in der TimescaleDB landen und anschließend vom Dashboard genutzt werden können:
+
+1. **Bootstrap-Trigger**  
+   Beim Start der Dash-App oder durch manuelle CLI-Aufrufe ruft `dashboard/data_loader.py` die Funktion `bootstrap_live_data()` auf. Die Symbolmenge stammt aus `MARKET_BOOTSTRAP_SYMBOLS` (Umgebung oder `.env`), optional ergänzt durch Eingaben in Tab 1. Ein Cache (`data/live_data/.bootstrap_state.json`) verhindert Mehrfach-Downloads innerhalb des `MARKET_BOOTSTRAP_CACHE_TTL`.
+
+2. **Datenabruf & Normalisierung**  
+   Für jedes Symbol lädt `Projekt/my_trading_bot/data/market_data_api.fetch_yahoo()` OHLCV-Werte via yfinance. Die Funktion vereinheitlicht Spalten, erzwingt UTC-Zeitstempel und fügt das Symbol als Spalte hinzu, sodass jede Zeile eindeutig (`symbol`, `datetime`) identifizierbar ist.
+
+3. **Lokaler Snapshot**  
+   Anschließend erstellt `market_data_api.save_csv()` unter `data/live_data/` einen CSV-Snapshot (z. B. `AAPL_live.csv`). Diese Kopie dient als sofortiger Fallback, falls die Datenbank nicht erreichbar ist oder Tests offline laufen müssen.
+
+4. **Schreiben in TimescaleDB**  
+   Ist `TIMESCALE_URL` gesetzt, baut `bootstrap_live_data()` per SQLAlchemy eine Verbindung auf und übergibt das DataFrame an `market_data_api.upsert_timescale()`. Diese Funktion legt bei Bedarf die Tabelle (`TS_TABLE`, Standard `ohlcv`) an, erzwingt den Primärschlüssel (`symbol`, `datetime`) und führt ein UPSERT aus, sodass doppelte Zeitstempel überschrieben statt dupliziert werden. In einer Timescale-Hypertable-Umgebung bleiben damit historische und neue Daten konsistent.
+
+5. **Laufzeitinteraktion im Dashboard**  
+   Dashboard-Callbacks lesen über `get_available_results()` und `load_returns()` (ebenfalls in `dashboard/data_loader.py`) direkt aus der TimescaleDB. Fällt die Verbindung aus, greifen beide Funktionen automatisch auf die lokalen CSVs zurück. Dadurch erhält jede UI-Komponente stets eine konsistente Sicht auf dieselbe Datenbasis, unabhängig davon, ob die Daten ursprünglich aus Live-Abfragen oder aus Backtests stammen.
+
+6. **Nebenläufigkeit & Statusmeldungen**  
+   Das Bootstrap läuft in einem Hintergrund-Thread und verwendet einen Reentrant-Lock sowie Statusvariablen, damit mehrere Auslöser (Button-Klick, App-Start, CLI) koexistieren können, ohne Daten zu überschreiben. Der Status erscheint im Dashboard-Header (z. B. „Bootstrapping…“ oder Zeitpunkt des letzten erfolgreichen Runs) und erlaubt eine transparente Beobachtung der Datenflüsse.
+
+Durch diese Kette – Download, Normalisierung, Snapshot, Timescale-Upsert und UI-Abfrage – entsteht eine deterministische, reproduzierbare Interaktion mit der Datenbank, die sowohl wissenschaftlichen als auch betrieblichen Anforderungen genügt.
+
+## Technische Projektdokumentation (Sphinx)
+Die technische Referenz wird mit [Sphinx](https://www.sphinx-doc.org) erzeugt und liest automatisch alle Docstrings aus dem Paket `my_trading_bot` ein.
+
+1. **Abhängigkeiten installieren**
+   ```bash
+   pip install -r Projekt/requirements.txt
+   ```
+2. **API-Stubs aktualisieren** – bei neuen/verschobenen Modulen:
+   ```bash
+   sphinx-apidoc -o docs/source/api Projekt/my_trading_bot
+   ```
+3. **HTML-Version bauen**
+   ```bash
+   make -C docs html
+   open docs/build/html/index.html  # optional
+   ```
+4. **PDF erstellen (LaTeX-Build erfordert TeXLive/MacTeX)**
+   ```bash
+   make -C docs latexpdf
+   open docs/build/latex/MyTradingBotDashboard.pdf  # Dateiname je nach Projektname
+   ```
+
+`docs/source/conf.py` ist bereits mit `autodoc`, `napoleon`, `autosummary` und `viewcode` konfiguriert und fügt dem Import-Pfad automatisch das Verzeichnis `Projekt/` hinzu. Damit lässt sich die vollständige API-Dokumentation reproduzierbar in HTML und PDF exportieren.

@@ -1,6 +1,8 @@
 # ==================== dashboard/callbacks/tab2_details_callbacks.py ====================
 """Callbacks for the details tab that render QuantStats metrics and reports."""
 
+from __future__ import annotations
+
 import os
 import tempfile
 import dash
