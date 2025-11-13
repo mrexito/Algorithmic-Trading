@@ -1,166 +1,230 @@
-# ==================== dashboard/callbacks/tab1_overview_callbacks.py ====================
-"""Callbacks powering the overview tab with metrics table and return curves."""
-
-import re
-import time
+import copy
 
 import dash
-from dash.dependencies import Input, Output, State
-from dashboard.data_loader import (
-    get_available_results,
-    load_returns,
-    schedule_bootstrap,
-)
-from dash import html
+import numpy as np
+import pandas as pd
 import plotly.graph_objs as go
 import quantstats.stats as qs_stats
-import pandas as pd
+from dash import dash_table, html
+from dash.dependencies import Input, Output, State
+
+from dashboard.data_loader import load_normalized_returns
+
+
+_METRICS = (
+    ("CAGR (%)", lambda r: qs_stats.cagr(r) * 100),
+    ("Sharpe Ratio", lambda r: qs_stats.sharpe(r, periods=252)),
+    ("Max Drawdown (%)", lambda r: qs_stats.max_drawdown(r) * 100),
+    ("Trefferquote (%)", lambda r: qs_stats.win_rate(r) * 100),
+    ("Profit-Faktor", qs_stats.profit_factor),
+    ("Ø Tagesrendite (%)", lambda r: qs_stats.avg_return(r) * 100),
+    ("Ø Verlust (%)", lambda r: qs_stats.avg_loss(r) * 100),
+    ("Gewinnserie", qs_stats.consecutive_wins),
+    ("Verlustserie", qs_stats.consecutive_losses),
+)
+
+
+def _safe_value(metric, returns):
+    try:
+        value = metric(returns)
+    except Exception:
+        return None
+
+    if value is None:
+        return None
+
+    if isinstance(value, (list, tuple)):
+        return None
+
+    if isinstance(value, (float, np.floating)) and (np.isnan(value) or np.isinf(value)):
+        return None
+
+    return value
+
+
+def _format_value(value):
+    if value is None:
+        return "–"
+    if isinstance(value, (float, np.floating)):
+        return f"{value:.2f}"
+    return str(value)
+
 
 
 @dash.callback(
-    [
-        Output("performance-table", "children"),
-        Output("overview-comparison-graph", "figure"),
-    ],
-    [
-        Input("overview-symbol-dropdown", "value"),
-        Input("overview-strategy-dropdown", "value"),
-    ],
+    Output("performance-table", "children"),
+    Output("overview-comparison-graph", "figure"),
+    Input("overview-symbol-dropdown", "value"),
+    Input("overview-strategy-dropdown", "value"),
+    State("overview-comparison-graph", "figure"),
 )
-def update_overview_tab(selected_symbols, selected_strategies):
-    """Render performance table and cumulative plots for the selected filters."""
+def update_overview_tab(
+    selected_symbols,
+    selected_strategies,
+    existing_figure,
+):
+    ctx = dash.callback_context
+    triggered_id = getattr(ctx, "triggered_id", None)
+    if triggered_id is None and ctx.triggered:
+        triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    if triggered_id in {"overview-zoom-in", "overview-zoom-out", "overview-zoom-reset"}:
+        if not existing_figure:
+            return dash.no_update, dash.no_update
+
+        adjusted = _adjust_zoom(existing_figure, triggered_id)
+        if adjusted is None:
+            return dash.no_update, dash.no_update
+
+        return dash.no_update, adjusted
+
     if not selected_symbols or not selected_strategies:
         return dash.no_update, dash.no_update
 
-    rows = []
-    fig = go.Figure()
+    table_rows = []
+    figure = go.Figure()
 
     for symbol in selected_symbols:
         for strategy in selected_strategies:
-            returns = load_returns(symbol, strategy)
-            if not returns.empty:
-                returns.index = pd.to_datetime(returns.index)
-                returns = returns.asfreq("B").fillna(0)
+            returns = load_normalized_returns(symbol, strategy)
+            if returns.empty:
+                continue
 
-                def get_metric(metric_func):
-                    try:
-                        val = metric_func(returns)
-                        return f"{val:.5f}" if val is not None else "N/A"
-                    except Exception:
-                        return "N/A"
+            metrics = {name: _format_value(_safe_value(func, returns)) for name, func in _METRICS}
+            table_rows.append({
+                "Symbol": symbol,
+                "Strategie": strategy,
+                **metrics,
+            })
 
-                rows.append(
-                    html.Tr(
-                        [
-                            html.Td(symbol),
-                            html.Td(strategy),
-                            html.Td(get_metric(qs_stats.consecutive_wins)),
-                            html.Td(get_metric(qs_stats.consecutive_losses)),
-                            html.Td(get_metric(qs_stats.avg_return)),
-                            html.Td(get_metric(qs_stats.avg_loss)),
-                            html.Td(get_metric(qs_stats.win_rate)),
-                            html.Td(get_metric(qs_stats.win_loss_ratio)),
-                            html.Td(get_metric(qs_stats.probabilistic_sharpe_ratio)),
-                            html.Td(get_metric(qs_stats.profit_factor)),
-                        ]
-                    )
+            cumulative = (1 + returns).cumprod()
+            figure.add_trace(
+                go.Scatter(
+                    x=cumulative.index,
+                    y=cumulative.values,
+                    mode="lines",
+                    name=f"{symbol} – {strategy}",
                 )
+            )
 
-                fig.add_trace(
-                    go.Scatter(
-                        x=returns.index,
-                        y=(1 + returns).cumprod(),
-                        mode="lines",
-                        name=f"{symbol}-{strategy}",
-                    )
-                )
+    if not table_rows:
+        empty_message = html.Div("Für die Auswahl liegen keine Daten vor.", className="empty-state")
+        figure.update_layout(
+            template="plotly_white",
+            xaxis={"visible": False},
+            yaxis={"visible": False},
+            annotations=[
+                {
+                    "text": "Keine Daten verfügbar",
+                    "xref": "paper",
+                    "yref": "paper",
+                    "showarrow": False,
+                    "font": {"size": 16, "color": "#6b7280"},
+                }
+            ],
+        )
+        return empty_message, figure
 
-    table = html.Table(
-        [
-            html.Thead(
-                html.Tr(
-                    [
-                        html.Th("Symbol"),
-                        html.Th("Strategie"),
-                        html.Th("consecutive_wins"),
-                        html.Th("consecutive_losses"),
-                        html.Th("avg_return"),
-                        html.Th("avg_loss"),
-                        html.Th("win_rate"),
-                        html.Th("win_loss_ratio"),
-                        html.Th("probabilistic_sharpe_ratio"),
-                        html.Th("profit_factor"),
-                    ]
-                )
-            ),
-            html.Tbody(rows),
-        ]
+    performance_table = dash_table.DataTable(
+        data=table_rows,
+        columns=[{"name": column, "id": column} for column in table_rows[0].keys()],
+        style_table={"overflowX": "auto"},
+        style_cell={
+            "padding": "8px",
+            "fontSize": "14px",
+            "textAlign": "center",
+        },
+        style_header={
+            "backgroundColor": "#2563eb",
+            "color": "white",
+            "fontWeight": "600",
+        },
+        style_data_conditional=[
+            {"if": {"row_index": "odd"}, "backgroundColor": "#f4f5f9"},
+        ],
     )
 
-    fig.update_layout(
-        title="Kumulierte Rendite", xaxis_title="Datum", yaxis_title="Wert"
+    figure.update_layout(
+        title="Kumulierte Rendite",
+        xaxis_title="Datum",
+        yaxis_title="Wachstum",
+        template="plotly_white",
+        hovermode="x unified",
+        legend_title_text="Kombination",
+        uirevision="overview-graph",
     )
-    return table, fig
+
+    return performance_table, figure
 
 
-@dash.callback(
-    Output("overview-symbol-dropdown", "options"),
-    Output("overview-strategy-dropdown", "options"),
-    Output("bootstrap-symbol-message", "children"),
-    Output("bootstrap-symbol-input", "value"),
-    Output("bootstrap-requested-symbols", "data"),
-    Output("bootstrap-reload-store", "data"),
-    Input("backend-status-ivl", "n_intervals"),
-    Input("bootstrap-symbol-button", "n_clicks"),
-    State("bootstrap-symbol-input", "value"),
-    State("bootstrap-requested-symbols", "data"),
-    prevent_initial_call=False,
-)
-def refresh_symbol_options(_tick, n_clicks, raw_symbols, requested_state):
-    """Refresh dropdown options and optionally trigger a data bootstrap for new symbols."""
-    triggered = dash.callback_context.triggered[0]["prop_id"] if dash.callback_context.triggered else ""
-    message = dash.no_update
-    reset_value = dash.no_update
-    reload_trigger = dash.no_update
-    requested_symbols = requested_state or []
-    requested_update = dash.no_update
+def _adjust_zoom(figure, action):
+    if not figure or not figure.get("data"):
+        return None
 
-    if triggered.startswith("bootstrap-symbol-button") and n_clicks:
-        tokens = []
-        if raw_symbols:
-            tokens = [
-                token.strip().upper()
-                for token in re.split(r"[,\s]+", raw_symbols)
-                if token.strip()
-            ]
-        if not tokens:
-            message = "Bitte mindestens ein gültiges Symbol angeben."
+    x_values = []
+    for trace in figure.get("data", []):
+        x_values.extend(trace.get("x", []))
+
+    if not x_values:
+        return None
+
+    series = pd.to_datetime(pd.Series(x_values))
+    series = series.dropna().sort_values()
+    if series.empty:
+        return None
+
+    full_start = series.iloc[0]
+    full_end = series.iloc[-1]
+
+    if full_start == full_end:
+        return None
+
+    layout = figure.get("layout", {})
+    current_range = layout.get("xaxis", {}).get("range")
+    if current_range and len(current_range) == 2:
+        current_start = pd.to_datetime(current_range[0])
+        current_end = pd.to_datetime(current_range[1])
+    else:
+        current_start, current_end = full_start, full_end
+
+    if action == "overview-zoom-reset":
+        new_start, new_end = full_start, full_end
+    else:
+        span = max(current_end - current_start, pd.Timedelta(0))
+        if span == pd.Timedelta(0):
+            span = full_end - full_start
+        factor = 0.7 if action == "overview-zoom-in" else 1.3
+        new_span = span * factor
+        full_span = full_end - full_start
+        if new_span >= full_span:
+            new_start, new_end = full_start, full_end
         else:
-            unique_tokens = sorted(set(tokens))
-            schedule_bootstrap(symbols=tokens, force=True)
-            joined = ", ".join(unique_tokens)
-            message = f"Bootstrap ausgelöst für {joined}."
-            reset_value = ""
-            requested_update = unique_tokens
+            center = current_start + span / 2
+            half_span = new_span / 2
+            new_start = center - half_span
+            new_end = center + half_span
 
-    results = get_available_results()
-    symbols = sorted({sym for sym, _ in results})
-    strategies = sorted({strat for _, strat in results})
+            if new_start < full_start:
+                shift = full_start - new_start
+                new_start += shift
+                new_end += shift
+            if new_end > full_end:
+                shift = new_end - full_end
+                new_start -= shift
+                new_end -= shift
 
-    symbol_options = [{"label": sym, "value": sym} for sym in symbols]
-    strategy_options = [{"label": strat, "value": strat} for strat in strategies]
+            new_start = max(new_start, full_start)
+            new_end = min(new_end, full_end)
 
-    if requested_symbols and set(requested_symbols).issubset(set(symbols)):
-        if message is dash.no_update:
-            message = f"Daten geladen: {', '.join(requested_symbols)}."
-        reload_trigger = time.time()
-        requested_update = []
+    if new_start >= new_end:
+        new_start, new_end = full_start, full_end
 
-    return (
-        symbol_options,
-        strategy_options,
-        message,
-        reset_value,
-        requested_update,
-        reload_trigger,
-    )
+    updated = copy.deepcopy(figure)
+    updated.setdefault("layout", {})
+    updated["layout"].setdefault("xaxis", {})
+    updated["layout"]["xaxis"]["range"] = [
+        new_start.isoformat(),
+        new_end.isoformat(),
+    ]
+    updated["layout"]["uirevision"] = "overview-graph"
+    return updated

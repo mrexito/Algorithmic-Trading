@@ -19,36 +19,30 @@ Projekt/
     strategies/                 # Example trading strategies
   requirements.txt
 
-## Usage
-1. Install dependencies:
-   ```bash
-   pip install -r Projekt/requirements.txt
-   ```
-2. Run the backtests to generate result files:
-   ```bash
-   python Projekt/my_trading_bot/backtest_runner.py
-   ```
-3. (Optional) Configure the live market data backend by exporting:
-   ```bash
-   export TIMESCALE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/market"
-   export TS_TABLE="ohlcv"  # optional; defaults to ohlcv
-   export MARKET_BOOTSTRAP_SYMBOLS="AAPL,GOOGL"  # optional; defaults shown
-   export MARKET_BOOTSTRAP_DURATION="1 Y"        # optional
-   export MARKET_BOOTSTRAP_BAR_SIZE="1 day"      # optional
-   export MARKET_BOOTSTRAP_CACHE_TTL=900         # optional; seconds before re-fetch
-   ```
-   These variables tell the dashboard where to upsert live prices and which symbols to fetch automatically.  
-   You can also place the same keys inside a project-level `.env`; the loader reads it on startup, normalizes symbols (uppercase, duplicates removed), and warns if the list is empty or malformed.
-4. Start the dashboard:
-   ```bash
-   python Projekt/my_trading_bot/dashboard/app.py
-   ```
-   Open the displayed address in your browser to interact with the three tabs:
-   - **Übersicht & Vergleich** – compare strategies across symbols
-   - **Strategiedetails** – deep dive into a single strategy/symbol
-   - **Strategiebeschreibungen** – read the markdown descriptions
+## How to run
+1. **Umgebung vorbereiten**
+   - Verwende Python 3.11 (siehe Hinweis in `Projekt/requirements.txt`).
+   - Optional: virtuelles Environment anlegen, z. B. mit `python -m venv .venv` und anschließend `source .venv/bin/activate` (Linux/macOS) bzw. `.venv\\Scripts\\activate` (Windows).
+   - Abhängigkeiten installieren:
+     ```bash
+     pip install -r Projekt/requirements.txt
+     ```
+2. **Backtests erzeugen**
+   - Führe die Berechnungen mit allen gewünschten Strategien/Symbolen aus. Die Resultate werden als `results/<STRATEGIE>_<SYMBOL>_returns.pkl` abgelegt:
+     ```bash
+     python Projekt/my_trading_bot/backtest_runner.py
+     ```
+3. **Dashboard starten**
+   - Starte die Dash-App und öffne anschließend http://127.0.0.1:8050 im Browser:
+     ```bash
+     python Projekt/my_trading_bot/dashboard/app.py
+     ```
+4. **Nutzung**
+   - **Tab 1 – Übersicht & Vergleich:** mehrere Strategien und Symbole vergleichen, Kennzahlen prüfen und Equity-Kurven abgleichen.
+   - **Tab 2 – Strategiedetails:** mit abhängigen Dropdowns eine Kombination auswählen und den QuantStats-Tearsheet laden.
+   - **Tab 3 – Strategiebeschreibungen:** Markdown-Dokumentation zu den Strategien lesen.
 
-This prototype uses local CSV files for historical price data and stores backtest results in `results/` as pickled Pandas Series.
+Das Projekt verwendet lokale CSV-Dateien für historische Kurse und legt Backtest-Ergebnisse als Pickle-Serien im Ordner `results/` ab.
 
 
 ## Data Source & Database Integration

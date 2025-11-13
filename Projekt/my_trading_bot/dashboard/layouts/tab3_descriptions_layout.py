@@ -1,8 +1,6 @@
-# ==================== dashboard/layouts/tab3_descriptions_layout.py ====================
-"""Layout and helpers for browsing markdown strategy descriptions."""
-
 import os
-from dash import html, dcc
+
+from dash import dcc, html
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DOC_DIR = os.path.join(BASE_DIR, "docs", "strategy_descriptions")
@@ -16,21 +14,28 @@ def get_available_strategies():
     return [f.replace("_description.md", "") for f in files]
 
 
-strategy_options = get_available_strategies()
+def _dropdown_options():
+    return [{"label": strategy, "value": strategy} for strategy in get_available_strategies()]
+
 
 layout = html.Div(
-    [
-        html.H2("Strategiebeschreibungen"),
+    className="tab-container",
+    children=[
+        html.H2("Strategiebeschreibungen", className="tab-heading"),
         html.Div(
-            [
-                html.Label("Wähle eine Strategie:"),
+            className="control-group",
+            children=[
+                html.Label("Wähle eine Strategie", className="control-label"),
                 dcc.Dropdown(
                     id="description-strategy-dropdown",
-                    options=[{"label": s, "value": s} for s in strategy_options],
+                    options=_dropdown_options(),
                     placeholder="Strategie auswählen",
                 ),
-            ]
+            ],
         ),
-        html.Div(id="strategy-description-content", style={"marginTop": "20px"}),
-    ]
+        html.Div(
+            id="strategy-description-content",
+            className="card",
+        ),
+    ],
 )

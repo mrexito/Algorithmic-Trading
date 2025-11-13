@@ -1,0 +1,5 @@
+# Ignore generated QuantStats reports
+*.html
+
+# Keep this directory tracked
+!.gitignore

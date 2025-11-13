@@ -7,6 +7,7 @@
 - **Strategie‑Beschreibungen erstellen:** Für jede Strategie eine Markdown‑Datei in `docs/strategy_descriptions/`, z. B. `MACD_description.md`.
 
 *Screenshots:*
+---
 ![config/settings.py – Symbolliste](screenshots/prep_settings_symbols.png)
 ![Strategiebeschreibungen – Ordnerübersicht](screenshots/prep_strategy_descriptions.png)
 

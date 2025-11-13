@@ -1,56 +1,70 @@
-"""Layout for the overview tab that compares strategies across symbols."""
+from dash import dcc, html
 
-from dash import html, dcc
 from dashboard.data_loader import get_available_results
 
+
 results = get_available_results()
-symbols = sorted(set([res[0] for res in results]))
-strategies = sorted(set([res[1] for res in results]))
+symbols = sorted({symbol for symbol, _ in results})
+strategies = sorted({strategy for _, strategy in results})
+
 
 layout = html.Div(
-    [
-        dcc.Store(id="bootstrap-requested-symbols"),
-        dcc.Store(id="bootstrap-reload-store"),
-        html.Div(id="bootstrap-reload-dummy", style={"display": "none"}),
-        html.H2("Übersicht & Vergleich"),
+    className="tab-container",
+    children=[
+        html.H2("Übersicht & Vergleich", className="tab-heading"),
         html.Div(
-            [
-                html.Label("Neue Symbole laden:"),
-                dcc.Input(
-                    id="bootstrap-symbol-input",
-                    type="text",
-                    placeholder="z.B. MSFT, AMZN",
-                    style={"marginRight": "8px", "width": "220px"},
+            className="control-row",
+            children=[
+                html.Div(
+                    className="control-group",
+                    children=[
+                        html.Label("Wähle Symbole", className="control-label"),
+                        dcc.Dropdown(
+                            id="overview-symbol-dropdown",
+                            options=[{"label": sym, "value": sym} for sym in symbols],
+                            multi=True,
+                            placeholder="Symbole auswählen",
+                        ),
+                    ],
                 ),
-                html.Button("Daten laden", id="bootstrap-symbol-button", n_clicks=0),
-                html.Span(
-                    id="bootstrap-symbol-message",
-                    style={"marginLeft": "12px", "fontStyle": "italic"},
+                html.Div(
+                    className="control-group",
+                    children=[
+                        html.Label("Wähle Strategien", className="control-label"),
+                        dcc.Dropdown(
+                            id="overview-strategy-dropdown",
+                            options=[{"label": strat, "value": strat} for strat in strategies],
+                            multi=True,
+                            placeholder="Strategien auswählen",
+                        ),
+                    ],
                 ),
             ],
-            style={"display": "flex", "alignItems": "center", "marginBottom": "12px"},
         ),
-        html.Div(
-            [
-                html.Label("Wähle Symbole:"),
-                dcc.Dropdown(
-                    id="overview-symbol-dropdown",
-                    options=[{"label": sym, "value": sym} for sym in symbols],
-                    multi=True,
+        dcc.Loading(
+            type="circle",
+            className="loading-overlay",
+            children=[
+                html.Div(id="performance-table", className="card"),
+                html.Div(
+                    className="card graph-card",
+                    children=[
+                        
+                        dcc.Graph(
+                            id="overview-comparison-graph",
+                            config={
+                                "displayModeBar": True,
+                                "displaylogo": False,
+                                "modeBarButtonsToAdd": [
+                                    "zoomIn2d",
+                                    "zoomOut2d",
+                                    "autoScale2d",
+                                ],
+                            },
+                        ),
+                    ],
                 ),
-            ]
+            ],
         ),
-        html.Div(
-            [
-                html.Label("Wähle Strategien:"),
-                dcc.Dropdown(
-                    id="overview-strategy-dropdown",
-                    options=[{"label": strat, "value": strat} for strat in strategies],
-                    multi=True,
-                ),
-            ]
-        ),
-        html.Div(id="performance-table"),
-        dcc.Graph(id="overview-comparison-graph"),
-    ]
+    ],
 )
