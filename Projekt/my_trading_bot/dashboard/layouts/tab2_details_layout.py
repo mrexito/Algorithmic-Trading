@@ -1,16 +1,10 @@
 from dash import dcc, html
 
-from dashboard.data_loader import get_strategy_symbol_map
-
-
-strategy_symbol_map = get_strategy_symbol_map()
-strategy_options = sorted(strategy_symbol_map.keys())
-
-
 layout = html.Div(
     className="tab-container",
     children=[
         html.H2("Strategiedetails", className="tab-heading"),
+        dcc.Interval(id="details-options-refresh", interval=20_000, n_intervals=0),
         html.Div(
             className="control-row",
             children=[
@@ -20,7 +14,7 @@ layout = html.Div(
                         html.Label("Wähle eine Strategie", className="control-label"),
                         dcc.Dropdown(
                             id="details-strategy-dropdown",
-                            options=[{"label": s, "value": s} for s in strategy_options],
+                            options=[],
                             placeholder="Strategie auswählen",
                             clearable=True,
                         ),

@@ -7,7 +7,7 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 
 import dash
 from dash import html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 import matplotlib
 import quantstats.reports as qsr
 
@@ -34,12 +34,28 @@ def _strategy_symbol_options(strategy: str | None):
 
 
 @dash.callback(
+    Output("details-strategy-dropdown", "options"),
+    Output("details-strategy-dropdown", "value"),
+    Input("details-options-refresh", "n_intervals"),
+    State("details-strategy-dropdown", "value"),
+)
+def refresh_strategy_options(_n, current_value):
+    """Refresh strategy list so newly added symbols appear without reload."""
+    mapping = get_strategy_symbol_map()
+    options = [{"label": s, "value": s} for s in sorted(mapping.keys())]
+    value = current_value if current_value in mapping else None
+    return options, value
+
+
+@dash.callback(
     Output("details-symbol-dropdown", "options"),
     Output("details-symbol-dropdown", "value"),
     Output("details-symbol-dropdown", "disabled"),
     Input("details-strategy-dropdown", "value"),
+    Input("details-options-refresh", "n_intervals"),
 )
-def update_symbol_dropdown(strategy):
+def update_symbol_dropdown(strategy, _n_intervals):
+    """Refresh symbol options whenever strategy changes or the periodic poll fires."""
     return _strategy_symbol_options(strategy)
 
 

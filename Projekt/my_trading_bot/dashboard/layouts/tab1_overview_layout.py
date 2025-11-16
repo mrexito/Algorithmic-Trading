@@ -18,6 +18,31 @@ layout = html.Div(
                 html.Div(
                     className="control-group",
                     children=[
+                        html.Label("Symbol hinzufügen", className="control-label"),
+                        html.Div(
+                            className="inline-input-group",
+                            children=[
+                                dcc.Input(
+                                    id="add-symbol-input",
+                                    type="text",
+                                    placeholder="z.B. AAPL",
+                                    debounce=True,
+                                    className="text-input",
+                                ),
+                                html.Button(
+                                    "Daten laden",
+                                    id="add-symbol-button",
+                                    n_clicks=0,
+                                    className="primary-button",
+                                ),
+                            ],
+                        ),
+                        html.Div(id="add-symbol-status", className="helper-text"),
+                    ],
+                ),
+                html.Div(
+                    className="control-group",
+                    children=[
                         html.Label("Wähle Symbole", className="control-label"),
                         dcc.Dropdown(
                             id="overview-symbol-dropdown",

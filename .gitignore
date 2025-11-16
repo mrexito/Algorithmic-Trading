@@ -12,3 +12,6 @@ __pycache__/
 *.pickle
 *.ipynb_checkpoints/
 /.DS_Store
+
+# Runtime bootstrap state/cache
+Projekt/Projekt/my_trading_bot/data/live_data/.bootstrap_state.json

@@ -3,7 +3,15 @@ from __future__ import annotations
 import os
 import pickle
 from collections import defaultdict
+from datetime import datetime, timezone
 from functools import lru_cache
+import json
+from glob import glob
+from pathlib import Path
+import sys
+import threading
+import time
+from typing import Dict, Iterable, Tuple
 
 import numpy as np
 import pandas as pd
@@ -26,6 +34,7 @@ DEFAULT_TABLE = os.environ.get("TS_TABLE", "ohlcv")
 # Static fallback directory with historical CSVs (per-symbol) used if DB is unavailable
 HIST_DIR = (ROOT / "Projekt" / "my_trading_bot" / "data" / "historical_prices").resolve()
 BOOTSTRAP_STATE_FILE = (ROOT / "Projekt" / "my_trading_bot" / "data" / "live_data" / ".bootstrap_state.json").resolve()
+LIVE_DATA_DIR = BOOTSTRAP_STATE_FILE.parent
 try:
     BOOTSTRAP_CACHE_TTL = int(os.environ.get("MARKET_BOOTSTRAP_CACHE_TTL", "900"))
 except (TypeError, ValueError):
@@ -423,27 +432,39 @@ def schedule_bootstrap(
 # --- Fallback helpers ---------------------------------------------------------
 
 def _list_symbols_on_disk() -> list[str]:
-    """Return list of symbols inferred from CSV filenames in HIST_DIR (e.g., AAPL.csv)."""
-    if not HIST_DIR.exists():
-        return []
-    files = glob(str(HIST_DIR / "*.csv"))
-    symbols = []
-    for fp in files:
-        name = Path(fp).stem
-        if name:
+    """Return list of symbols inferred from CSVs in fallback dirs (historical + live cache)."""
+    symbols: list[str] = []
+    for base in (HIST_DIR, LIVE_DATA_DIR):
+        if not base.exists():
+            continue
+        files = glob(str(base / "*.csv"))
+        for fp in files:
+            name = Path(fp).stem
+            if not name:
+                continue
+            if name.lower().endswith("_live"):
+                name = name[: -len("_live")]
             symbols.append(name.upper())
     return sorted(set(symbols))
 
 
 def _load_px_from_csv(symbol: str) -> pd.Series:
-    """Load a close-price daily series from historical CSV fallback.
+    """Load a close-price daily series from disk fallbacks (live cache, then historical).
 
     Expects columns at least: datetime, close
     """
-    fp = HIST_DIR / f"{symbol.upper()}.csv"
-    if not fp.exists():
+    candidates = [
+        LIVE_DATA_DIR / f"{symbol.upper()}_live.csv",
+        HIST_DIR / f"{symbol.upper()}.csv",
+    ]
+    df = pd.DataFrame()
+    for fp in candidates:
+        if fp.exists():
+            df = pd.read_csv(fp)
+            break
+
+    if df.empty:
         return pd.Series(dtype="float64")
-    df = pd.read_csv(fp)
     if df.empty or "datetime" not in df.columns or "close" not in df.columns:
         return pd.Series(dtype="float64")
     df["datetime"] = pd.to_datetime(df["datetime"], utc=True, errors="coerce")
@@ -585,20 +606,31 @@ RESULT_DIR = os.path.join(BASE_DIR, "results")
 
 
 def result_file_path(symbol: str, strategy: str) -> str:
-    """Return the absolute path of the stored returns for a strategy/symbol."""
+    """Return path of stored returns; used for legacy pickles."""
     return os.path.join(RESULT_DIR, f"{strategy}_{symbol}_returns.pkl")
 
-def get_available_results():
-    files = [f for f in os.listdir(RESULT_DIR) if f.endswith("_returns.pkl")]
-    combos = []
-    for f in files:
-        name = f.replace("_returns.pkl", "")
-        strat, symbol = name.split("_")
-        combos.append((symbol, strat))
-    return combos
+
+def get_available_results() -> List[Tuple[str, str]]:
+    """
+    Return list of (symbol, strategy) pairs for the UI dropdowns.
+
+    Primary source: TimescaleDB (distinct symbols in OHLCV table).
+    Fallback: cached CSVs (live/historical). All strategies are offered for each symbol.
+    """
+    symbols: list[str] = []
+    try:
+        eng = get_engine()
+        sql = text(f"SELECT DISTINCT symbol FROM {DEFAULT_TABLE} ORDER BY symbol;")
+        with eng.connect() as conn:
+            rows = conn.execute(sql).fetchall()
+        symbols = [str(r[0]).upper() for r in rows]
+    except Exception:
+        symbols = _list_symbols_on_disk()
+
+    return [(sym, strat) for sym in symbols for strat in STRATEGY_LIST]
 
 
-def get_strategy_symbol_map():
+def get_strategy_symbol_map() -> dict[str, list[str]]:
     """Return a mapping from strategy name to the available symbols."""
     mapping: dict[str, list[str]] = defaultdict(list)
     for symbol, strategy in get_available_results():
@@ -651,19 +683,22 @@ def normalize_returns(data):
 
 
 @lru_cache(maxsize=256)
-def load_returns(symbol, strategy):
+def _load_returns_from_results_file(symbol: str, strategy: str) -> pd.Series:
+    """Load previously computed returns from disk if available."""
     file_path = result_file_path(symbol, strategy)
     if os.path.exists(file_path):
         with open(file_path, "rb") as f:
             return pickle.load(f)
-    return pd.Series()
+    return pd.Series(dtype="float64")
 
 
 @lru_cache(maxsize=256)
 def load_normalized_returns(symbol: str, strategy: str) -> pd.Series:
     """Return cached, normalised daily returns for the given selection."""
 
-    raw_returns = load_returns(symbol, strategy)
+    raw_returns = _load_returns_from_results_file(symbol, strategy)
+    if raw_returns.empty:
+        raw_returns = load_returns(symbol, strategy)
     if isinstance(raw_returns, pd.Series):
         # Ensure a fresh copy so callers do not mutate the cached series.
         raw_returns = raw_returns.copy()

@@ -8,7 +8,12 @@ import quantstats.stats as qs_stats
 from dash import dash_table, html
 from dash.dependencies import Input, Output, State
 
-from dashboard.data_loader import load_normalized_returns
+from dashboard.data_loader import (
+    get_available_results,
+    get_bootstrap_status,
+    load_normalized_returns,
+    schedule_bootstrap,
+)
 
 
 _METRICS = (
@@ -48,6 +53,40 @@ def _format_value(value):
     if isinstance(value, (float, np.floating)):
         return f"{value:.2f}"
     return str(value)
+
+
+def _symbol_options(extra_symbol: str | None = None):
+    combos = get_available_results()
+    symbols = {symbol for symbol, _ in combos}
+    if extra_symbol:
+        symbols.add(extra_symbol.upper())
+    return [{"label": sym, "value": sym} for sym in sorted(symbols)]
+
+
+@dash.callback(
+    Output("add-symbol-status", "children"),
+    Output("overview-symbol-dropdown", "options"),
+    Output("add-symbol-input", "value"),
+    Input("add-symbol-button", "n_clicks"),
+    State("add-symbol-input", "value"),
+    prevent_initial_call=True,
+)
+def add_symbol(n_clicks, raw_symbol):
+    """Allow users to enqueue a new symbol for bootstrapping."""
+    if not n_clicks:
+        return dash.no_update, dash.no_update, dash.no_update
+
+    symbol = (raw_symbol or "").strip().upper()
+    if not symbol:
+        return "Bitte gib ein Symbol ein.", dash.no_update, dash.no_update
+
+    try:
+        schedule_bootstrap(symbols=[symbol])
+    except Exception as exc:  # pragma: no cover - defensive feedback
+        return f"Fehler beim Laden von {symbol}: {exc}", dash.no_update, dash.no_update
+
+    status_msg = f"Bootstrap für {symbol} gestartet. {get_bootstrap_status()}"
+    return status_msg, _symbol_options(symbol), ""
 
 
 
