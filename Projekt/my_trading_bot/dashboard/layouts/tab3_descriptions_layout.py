@@ -5,6 +5,21 @@ from dash import dcc, html
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DOC_DIR = os.path.join(BASE_DIR, "docs", "strategy_descriptions")
 
+# Map file-basename to a nicer label in the dropdown.
+LABEL_ALIASES = {
+    "BUY_HOLD": "Buy & Hold",
+    "SMA": "SMA (50/200)",
+    "EMA": "EMA (12/26)",
+    "RSI": "RSI (14)",
+    "MACD": "MACD",
+    "AI": "AI",
+    "BOLLINGER": "Bollinger Bands",
+    "HORIZONTAL": "Horizontal Pattern",
+    "ZIGZAG": "ZigZag",
+    "DTW": "DTW (Dynamic Time Warping)",
+    "DUMMY": "Dummy Strategy",
+}
+
 
 def get_available_strategies():
     """Return strategy identifiers for which a markdown description exists."""
@@ -15,7 +30,11 @@ def get_available_strategies():
 
 
 def _dropdown_options():
-    return [{"label": strategy, "value": strategy} for strategy in get_available_strategies()]
+    options = []
+    for strategy in sorted(get_available_strategies()):
+        label = LABEL_ALIASES.get(strategy, strategy.replace("_", " ").title())
+        options.append({"label": label, "value": strategy})
+    return options
 
 
 layout = html.Div(

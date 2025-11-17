@@ -1,7 +1,8 @@
 {
-  "timestamp": 1763320881.259569,
+  "timestamp": 1763409127.14374,
   "symbols": [
-    "SPY"
+    "AAPL",
+    "GOOGL"
   ],
   "duration": "1 Y",
   "bar_size": "1 day",
