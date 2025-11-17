@@ -610,13 +610,39 @@ def result_file_path(symbol: str, strategy: str) -> str:
     return os.path.join(RESULT_DIR, f"{strategy}_{symbol}_returns.pkl")
 
 
+def _list_results_on_disk() -> list[Tuple[str, str]]:
+    """Return available (symbol, strategy) combos inferred from stored pickles."""
+    combos: set[Tuple[str, str]] = set()
+    result_dir = Path(RESULT_DIR)
+    if not result_dir.exists():
+        return []
+
+    for file_path in result_dir.glob("*_returns.pkl"):
+        stem = file_path.stem
+        if not stem.endswith("_returns"):
+            continue
+        body = stem[: -len("_returns")]
+        if "_" not in body:
+            continue
+        strategy, _, symbol_part = body.partition("_")
+        if not strategy or not symbol_part:
+            continue
+        combos.add((symbol_part.upper(), strategy))
+
+    return sorted(combos, key=lambda item: (item[0], item[1]))
+
+
 def get_available_results() -> List[Tuple[str, str]]:
     """
     Return list of (symbol, strategy) pairs for the UI dropdowns.
 
-    Primary source: TimescaleDB (distinct symbols in OHLCV table).
-    Fallback: cached CSVs (live/historical). All strategies are offered for each symbol.
+    Combines database-backed symbols (for live calculations) with strategy/symbol
+    pairs discovered from stored backtest results so that every defined strategy is
+    visible when its data exists on disk.
     """
+    # Pre-seed combos using on-disk backtest results (covers non-DB strategies).
+    combos: set[Tuple[str, str]] = set(_list_results_on_disk())
+
     symbols: list[str] = []
     try:
         eng = get_engine()
@@ -627,7 +653,8 @@ def get_available_results() -> List[Tuple[str, str]]:
     except Exception:
         symbols = _list_symbols_on_disk()
 
-    return [(sym, strat) for sym in symbols for strat in STRATEGY_LIST]
+    # Only expose strategies for which result files exist.
+    return sorted(combos, key=lambda item: (item[0], item[1]))
 
 
 def get_strategy_symbol_map() -> dict[str, list[str]]:
