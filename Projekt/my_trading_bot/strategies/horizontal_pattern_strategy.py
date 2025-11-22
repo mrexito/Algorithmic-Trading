@@ -25,9 +25,9 @@ class HorizontalPatternStrategy(bt.Strategy):
     def next(self):
         """Issue buy/sell orders when the horizontal pattern criteria are met."""
         if self.order:
-            return  # warte, bis die Order ausgeführt wurde
+            return  # wait for the pending order to settle
 
-        # Kaufbedingung: RSI unter 35, Kurs leicht über jüngstem Tief, positive Dynamik
+        # Entry condition: RSI below 35, price slightly above the recent low, positive momentum
         if not self.position:
             if (
                 self.rsi[0] < 35
@@ -37,7 +37,7 @@ class HorizontalPatternStrategy(bt.Strategy):
                 self.order = self.buy()
                 self.buy_price = self.data.close[0]
 
-        # Verkaufsbedingung: Take-Profit oder Stop-Loss erreicht
+        # Exit condition: take-profit or stop-loss hit
         elif self.position:
             tp = self.buy_price * (1 + self.p.take_profit)
             sl = self.buy_price * (1 - self.p.stop_loss)

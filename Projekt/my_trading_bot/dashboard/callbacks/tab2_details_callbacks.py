@@ -1,3 +1,5 @@
+"""Callbacks for the details tab that renders QuantStats reports per selection."""
+
 import os
 import tempfile
 from functools import lru_cache
@@ -24,6 +26,7 @@ _REPORT_CACHE_GUARD = Lock()
 
 
 def _strategy_symbol_options(strategy: str | None):
+    """Return dropdown options for symbols given a strategy, plus defaults and disabled state."""
     mapping = get_strategy_symbol_map()
     if not strategy or strategy not in mapping:
         return [], None, True
@@ -93,6 +96,7 @@ class _NoDataAvailableError(RuntimeError):
 
 
 def _get_quantstats_report(strategy: str, symbol: str) -> str:
+    """Load or render the QuantStats HTML report for the chosen combination."""
     file_path = result_file_path(symbol, strategy)
     try:
         file_mtime = os.path.getmtime(file_path)
@@ -105,6 +109,7 @@ def _get_quantstats_report(strategy: str, symbol: str) -> str:
 
 @lru_cache(maxsize=16)
 def _render_report_cached(strategy: str, symbol: str, _file_mtime: float | None) -> str:
+    """Render the QuantStats report to a temp file and return its HTML contents."""
     returns = load_normalized_returns(symbol, strategy)
     if returns.empty:
         raise _NoDataAvailableError

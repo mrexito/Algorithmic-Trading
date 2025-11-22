@@ -1,3 +1,5 @@
+"""Legacy data loader variant kept for backward compatibility in the dashboard."""
+
 from __future__ import annotations
 
 import os
@@ -43,7 +45,9 @@ BOOTSTRAP_PROVIDER = (os.environ.get("MARKET_BOOTSTRAP_PROVIDER", "yf").strip().
 
 # Lazily create the SQLAlchemy engine so import-time doesn't explode
 _engine: Engine | None = None
+
 def get_engine() -> Engine:
+    """Create (and memoize) a SQLAlchemy engine for the configured TimescaleDB."""
     global _engine
     if _engine is None:
         if not TS_URL:
@@ -137,6 +141,7 @@ _bootstrap_warnings.extend(_bootstrap_warning_list)
 
 
 def _load_cached_run() -> dict[str, object]:
+    """Read cached bootstrap metadata from disk if present."""
     if not BOOTSTRAP_STATE_FILE.exists():
         return {}
     try:
@@ -146,6 +151,7 @@ def _load_cached_run() -> dict[str, object]:
 
 
 def _write_cached_run(payload: dict[str, object]) -> None:
+    """Persist bootstrap metadata so repeated jobs can be skipped when unchanged."""
     try:
         BOOTSTRAP_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
         BOOTSTRAP_STATE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -154,6 +160,7 @@ def _write_cached_run(payload: dict[str, object]) -> None:
 
 
 def _should_skip_bootstrap(symbols: Iterable[str], duration: str, bar_size: str, provider: str, force: bool) -> bool:
+    """Return True when a recent bootstrap already covers the same parameters."""
     if force:
         return False
     meta = _load_cached_run()
@@ -178,11 +185,13 @@ def _should_skip_bootstrap(symbols: Iterable[str], duration: str, bar_size: str,
 
 
 def _update_bootstrap_state(**kwargs: object) -> None:
+    """Apply updates to the shared bootstrap state under a lock."""
     with _bootstrap_lock:
         _bootstrap_state.update(kwargs)
 
 
 def get_bootstrap_status() -> str:
+    """Return a short human-readable description of the bootstrap state."""
     state = _bootstrap_state.get("state", "idle")
     message = _bootstrap_state.get("message") or ""
     if state in {"running", "scheduled"}:
@@ -322,6 +331,7 @@ def _bootstrap_worker(
     provider: str,
     force: bool,
 ) -> None:
+    """Wrapper that runs the bootstrap job and keeps state coherent."""
     try:
         bootstrap_live_data(
             symbols=symbols,

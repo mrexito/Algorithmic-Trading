@@ -76,6 +76,7 @@ def render_tab_content(tab):
     dash.dependencies.Input("backend-status-ivl", "n_intervals"),
 )
 def update_backend_status(_):
+    """Show whether TimescaleDB or cached CSV data is currently reachable."""
     # Import here to avoid circular imports at app startup
     from dashboard.data_loader import get_backend_status
     return get_backend_status()
