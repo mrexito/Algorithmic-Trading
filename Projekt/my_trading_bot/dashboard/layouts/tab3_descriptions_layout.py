@@ -8,9 +8,8 @@ DOC_DIR = os.path.join(BASE_DIR, "docs", "strategy_descriptions")
 # Map file-basename to a nicer label in the dropdown.
 LABEL_ALIASES = {
     "BUY_HOLD": "Buy & Hold",
-    "SMA": "SMA (50/200)",
-    "EMA": "EMA (12/26)",
-    "RSI": "RSI (14)",
+    "SMA": "SMA",
+    "RSI": "RSI",
     "MACD": "MACD",
     "AI": "AI",
     "BOLLINGER": "Bollinger Bands",
