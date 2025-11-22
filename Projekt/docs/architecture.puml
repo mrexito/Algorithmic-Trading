@@ -1,0 +1,84 @@
+@startuml
+title My Trading Bot - Architecture Overview
+!theme plain
+skinparam componentStyle rectangle
+skinparam defaultTextAlignment center
+
+package "External Services" {
+  cloud "Yahoo Finance" as YF
+  database "TimescaleDB\n(Docker container)" as TS
+  component "Backtrader\n(engine)" as Backtrader
+  component "QuantStats\n(report generator)" as Quantstats
+}
+
+component "Config Settings\n(config/settings.py)" as Config
+
+package "Market Data Layer" {
+  component "MarketData API\n(data/market_data_api.py)" as MarketAPI
+  component "Data Loader CLI\n(data/data_handler.py)" as DataCLI
+  storage "Live Snapshots\n(Projekt/my_trading_bot/data/live_data/*.csv)" as LiveCSV
+  storage "Historic CSVs\n(Projekt/my_trading_bot/data/historical_prices/*.csv)" as HistCSV
+}
+
+package "Backtesting Pipeline" {
+  component "Backtest Runner\n(backtest_runner.py)" as Runner
+  component "Strategy Library\n(strategies/*.py)" as Strategies
+  collections "Pickled Returns\n(Projekt/my_trading_bot/results/*.pkl)" as Results
+}
+
+package "Dashboard (dashboard/*)" {
+  component "Dash App Shell\n(app.py)" as DashApp
+  component "Tab Layouts\n(layouts/*)" as Layouts
+  component "Tab Callbacks\n(callbacks/tab*_callbacks.py)" as Callbacks
+  component "Data Loader & Bootstrap Scheduler\n(data_loader.py)" as DashDataLoader
+  component "QuantStats Cache\n(quantstats_cache.py)" as QSCache
+  component "Strategy Docs Loader\n(tab3 + docs)" as DocsLoader
+}
+
+folder "Strategy Docs\n(Projekt/my_trading_bot/docs/strategy_descriptions/*.md)" as Docs
+
+Config --> Runner : CAPITAL/\nCOMMISSION\nPREDEFINED_SYMBOLS
+
+YF --> MarketAPI : OHLCV\n( yfinance )
+MarketAPI --> LiveCSV : save snapshot
+MarketAPI --> TS : upsert\nlatest candles
+DataCLI --> MarketAPI : reuse fetch/\nnormalize logic
+
+Runner --> MarketAPI : fetch bootstrap data
+Runner --> HistCSV : persist\nbacktest input
+Runner --> Strategies : instantiate
+Strategies --> Backtrader : derived bt.Strategy
+Runner --> Backtrader : run Cerebro
+Runner --> Results : pickle\nreturns per strategy/symbol
+
+DashApp --> Layouts
+DashApp --> Callbacks
+Callbacks --> DashDataLoader : load metrics,\nnormalized returns
+DashDataLoader --> TS : query OHLCV
+DashDataLoader --> HistCSV : fallback read
+DashDataLoader --> LiveCSV : fallback & status info
+DashDataLoader --> MarketAPI : bootstrap\nnew symbols (threaded)
+DashDataLoader --> Results : load\ncumulative returns
+Callbacks --> DocsLoader : Tab 3 requests\nmarkdown content
+DocsLoader --> Docs : Markdown\nrendered in Tab 3
+
+QSCache --> DashDataLoader : request returns
+QSCache --> Results : read pickle data
+QSCache --> Quantstats : render HTML\ntearsheets
+QSCache --> Callbacks : serve cached\niframe content
+
+note right of DashDataLoader
+  - Schedules bootstrap on app startup (schedule_bootstrap)
+  - Persists last run to data/live_data/.bootstrap_state.json
+  - Falls back to CSVs if TimescaleDB unreachable
+end note
+
+note bottom of Results
+  Also consumed by dashboard callbacks for Tab 1/2 and cached QuantStats reports.
+end note
+
+note top of TS
+  TimescaleDB connection configurable via ENV vars (TIMESCALE_URL, TS_TABLE)
+end note
+
+@enduml
