@@ -22,7 +22,7 @@ Projekt/
 ## How to run
 1. **Umgebung vorbereiten**
    - Verwende Python 3.11 (siehe Hinweis in `Projekt/requirements.txt`).
-   - Optional: virtuelles Environment anlegen, z. B. mit `python -m venv .venv` und anschließend `source .venv/bin/activate` (Linux/macOS) bzw. `.venv\\Scripts\\activate` (Windows).
+   - Optional: virtuelles Environment anlegen, z. B. mit `python -m venv .venv` und anschliessend `source .venv/bin/activate` (Linux/macOS) bzw. `.venv\\Scripts\\activate` (Windows).
    - Abhängigkeiten installieren:
      ```bash
      pip install -r Projekt/requirements.txt
@@ -33,7 +33,7 @@ Projekt/
      python Projekt/my_trading_bot/backtest_runner.py
      ```
 3. **Dashboard starten**
-   - Starte die Dash-App und öffne anschließend http://127.0.0.1:8050 im Browser:
+   - Starte die Dash-App und öffne anschliessend http://127.0.0.1:8050 im Browser:
      ```bash
      python Projekt/my_trading_bot/dashboard/app.py
      ```
@@ -158,7 +158,7 @@ docker exec -it timescale psql -U postgres -d market -c "SELECT * FROM ohlcv ORD
 ```
 
 ### 5. Datenpersistenz & Interaktion
-Die Datenpipeline besteht aus klar getrennten Schritten, die zusammen sicherstellen, dass neue Kurse zuverlässig in der TimescaleDB landen und anschließend vom Dashboard genutzt werden können:
+Die Datenpipeline besteht aus klar getrennten Schritten, die zusammen sicherstellen, dass neue Kurse zuverlässig in der TimescaleDB landen und anschliessend vom Dashboard genutzt werden können:
 
 1. **Bootstrap-Trigger**  
    Beim Start der Dash-App oder durch manuelle CLI-Aufrufe ruft `dashboard/data_loader.py` die Funktion `bootstrap_live_data()` auf. Die Symbolmenge stammt aus `MARKET_BOOTSTRAP_SYMBOLS` (Umgebung oder `.env`), optional ergänzt durch Eingaben in Tab 1. Ein Cache (`data/live_data/.bootstrap_state.json`) verhindert Mehrfach-Downloads innerhalb des `MARKET_BOOTSTRAP_CACHE_TTL`.
@@ -167,7 +167,7 @@ Die Datenpipeline besteht aus klar getrennten Schritten, die zusammen sicherstel
    Für jedes Symbol lädt `Projekt/my_trading_bot/data/market_data_api.fetch_yahoo()` OHLCV-Werte via yfinance. Die Funktion vereinheitlicht Spalten, erzwingt UTC-Zeitstempel und fügt das Symbol als Spalte hinzu, sodass jede Zeile eindeutig (`symbol`, `datetime`) identifizierbar ist.
 
 3. **Lokaler Snapshot**  
-   Anschließend erstellt `market_data_api.save_csv()` unter `data/live_data/` einen CSV-Snapshot (z. B. `AAPL_live.csv`). Diese Kopie dient als sofortiger Fallback, falls die Datenbank nicht erreichbar ist oder Tests offline laufen müssen.
+   Anschliessend erstellt `market_data_api.save_csv()` unter `data/live_data/` einen CSV-Snapshot (z. B. `AAPL_live.csv`). Diese Kopie dient als sofortiger Fallback, falls die Datenbank nicht erreichbar ist oder Tests offline laufen müssen.
 
 4. **Schreiben in TimescaleDB**  
    Ist `TIMESCALE_URL` gesetzt, baut `bootstrap_live_data()` per SQLAlchemy eine Verbindung auf und übergibt das DataFrame an `market_data_api.upsert_timescale()`. Diese Funktion legt bei Bedarf die Tabelle (`TS_TABLE`, Standard `ohlcv`) an, erzwingt den Primärschlüssel (`symbol`, `datetime`) und führt ein UPSERT aus, sodass doppelte Zeitstempel überschrieben statt dupliziert werden. In einer Timescale-Hypertable-Umgebung bleiben damit historische und neue Daten konsistent.
