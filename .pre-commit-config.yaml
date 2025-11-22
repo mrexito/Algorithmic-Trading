@@ -5,11 +5,11 @@ repos:
       - id: black
         name: black
         types: [file, python]
-        files: '^Projekt'
+        files: ^Projekt/
   - repo: https://github.com/PyCQA/flake8
     rev: 7.1.1
     hooks:
       - id: flake8
         name: flake8
         types: [file, python]
-        files: '^Projekt'
+        files: ^Projekt/
