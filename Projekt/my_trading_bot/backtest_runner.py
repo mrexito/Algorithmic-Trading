@@ -11,7 +11,6 @@ from data.market_data_api import fetch_yahoo, save_csv
 from strategies.macd_strategy import MACDStrategy
 from strategies.rsi_strategy import RSIStrategy
 from strategies.sma_strategy import SMAStrategy
-from strategies.dummy_strategy import DummyStrategy
 from strategies.ai_strategy import AIStrategy
 from strategies.horizontal_pattern_strategy import HorizontalPatternStrategy
 from strategies.bollinger_strategy import BollingerStrategy
@@ -36,7 +35,6 @@ def run_backtests():
         "MACD": MACDStrategy,
         "RSI": RSIStrategy,
         "SMA": SMAStrategy,
-        "DUMMY": DummyStrategy,
         "AI": AIStrategy,
         "HORIZONTAL": HorizontalPatternStrategy,
         "BOLLINGER": BollingerStrategy,

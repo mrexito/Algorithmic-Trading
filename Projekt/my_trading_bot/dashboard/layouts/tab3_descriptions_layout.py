@@ -17,7 +17,6 @@ LABEL_ALIASES = {
     "HORIZONTAL": "Horizontal Pattern",
     "ZIGZAG": "ZigZag",
     "DTW": "DTW (Dynamic Time Warping)",
-    "DUMMY": "Dummy Strategy",
 }
 
 
