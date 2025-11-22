@@ -11,7 +11,7 @@ class ZigZagStrategy(bt.Strategy):
     def __init__(self):
         """Initialize pivot tracking state."""
         self.last_pivot = None
-        self.direction = None  # "up" oder "down"
+        self.direction = None  # "up" or "down"
 
     def next(self):
         """Open or close trades based on percentage moves relative to the last pivot."""
@@ -33,7 +33,7 @@ class ZigZagStrategy(bt.Strategy):
                 self.last_pivot = price
                 self.direction = "down"
         else:
-            # Close position bei Umkehr
+            # Close the position when the move reverses past the threshold
             if self.direction == "up" and change_pct <= -self.p.perc:
                 self.close()
                 self.last_pivot = price

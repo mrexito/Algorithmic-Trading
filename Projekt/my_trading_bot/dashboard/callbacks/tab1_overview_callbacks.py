@@ -1,3 +1,5 @@
+"""Callbacks for the overview tab metrics table and cumulative chart."""
+
 import copy
 
 import dash
@@ -30,6 +32,7 @@ _METRICS = (
 
 
 def _safe_value(metric, returns):
+    """Run a metric function defensively and normalize invalid outputs to None."""
     try:
         value = metric(returns)
     except Exception:
@@ -48,6 +51,7 @@ def _safe_value(metric, returns):
 
 
 def _format_value(value):
+    """Format numeric values for the KPI table while keeping blanks for missing entries."""
     if value is None:
         return "–"
     if isinstance(value, (float, np.floating)):
@@ -56,6 +60,7 @@ def _format_value(value):
 
 
 def _symbol_options(extra_symbol: str | None = None):
+    """Build dropdown options and optionally include a freshly added symbol."""
     combos = get_available_results()
     symbols = {symbol for symbol, _ in combos}
     if extra_symbol:
@@ -102,6 +107,7 @@ def update_overview_tab(
     selected_strategies,
     existing_figure,
 ):
+    """Render the performance table and cumulative return chart for chosen selections."""
     ctx = dash.callback_context
     triggered_id = getattr(ctx, "triggered_id", None)
     if triggered_id is None and ctx.triggered:
@@ -197,6 +203,7 @@ def update_overview_tab(
 
 
 def _adjust_zoom(figure, action):
+    """Adjust zoom bounds on the overview chart while keeping the range within the data."""
     if not figure or not figure.get("data"):
         return None
 

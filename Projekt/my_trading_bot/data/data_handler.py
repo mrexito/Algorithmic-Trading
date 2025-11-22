@@ -28,6 +28,7 @@ def _get_ts_config() -> tuple[str | None, str]:
 
 
 def main() -> None:
+    """Parse CLI arguments, fetch Yahoo data, and optionally upsert into TimescaleDB."""
     parser = argparse.ArgumentParser(description="Market data loader")
     parser.add_argument("symbol", help="Ticker symbol, e.g., AAPL")
     parser.add_argument("--provider", default="yf", choices=["yf"], help="Data provider (only 'yf' supported)")

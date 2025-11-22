@@ -26,11 +26,11 @@ class AIStrategy(bt.Strategy):
         if len(self) < self.p.train_period + 1:
             return
 
-        # Aktuellen RSI/SMA-Wert abrufen
+        # Pull current RSI/SMA values
         rsi_val = float(self.rsi[0])
         sma_val = float(self.sma[0])
 
-        # Trainingsdaten aufbauen
+        # Build the training set
         self.X = []
         self.y = []
         for i in range(-self.p.train_period, -1):
@@ -40,12 +40,12 @@ class AIStrategy(bt.Strategy):
                 self.X.append([rsi_i, sma_i])
                 self.y.append(1 if self.dataclose[i + 1] > self.dataclose[i] else 0)
 
-        # Training durchführen
+        # Train the model
         X_np = np.array(self.X)
         X_scaled = self.scaler.fit_transform(X_np)
         self.model.fit(X_scaled, self.y)
 
-        # Vorhersage auf aktuelle Daten anwenden
+        # Apply the prediction to the latest features
         current_features = self.scaler.transform([[rsi_val, sma_val]])
         prob = self.model.predict_proba(current_features)[0, 1]
 

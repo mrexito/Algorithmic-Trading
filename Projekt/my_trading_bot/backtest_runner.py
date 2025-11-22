@@ -71,7 +71,7 @@ def run_backtests():
             data = bt.feeds.PandasData(dataname=df)
             cerebro.adddata(data)
             cerebro.addstrategy(strat_class)
-            # Batch Size anpassen bei Bedarf aktuell 10% -> 10% des Kapitals pro Trade
+            # Position sizing: default to 5% of capital per trade; adjust if needed
             cerebro.addsizer(bt.sizers.PercentSizer, percents=5)
             cerebro.broker.set_cash(CAPITAL)
             cerebro.broker.setcommission(commission=COMMISSION)

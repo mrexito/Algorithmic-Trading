@@ -1,3 +1,5 @@
+"""Market data helpers for fetching, normalizing, and persisting OHLCV series."""
+
 from __future__ import annotations
 
 import os

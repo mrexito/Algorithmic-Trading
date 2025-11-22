@@ -37,10 +37,12 @@ class NoDataAvailableError(RuntimeError):
 
 
 def shutdown_executor():
+    """Shut down the background executor without blocking app shutdown."""
     _REFRESH_EXECUTOR.shutdown(wait=False)
 
 
 def _cache_file(strategy: str, symbol: str) -> Path:
+    """Return the cache file path for a given strategy/symbol pair."""
     safe_strategy = strategy.replace(os.sep, "_")
     safe_symbol = symbol.replace(os.sep, "_")
     return _CACHE_DIR / f"{safe_strategy}__{safe_symbol}.html"
@@ -54,10 +56,12 @@ def _load_cached_content(strategy: str, symbol: str, cache_mtime: float) -> str:
 
 
 def _read_cache(strategy: str, symbol: str, cache_mtime: float) -> str:
+    """Read cached HTML content for the given combination."""
     return _load_cached_content(strategy, symbol, cache_mtime)
 
 
 def _is_cache_valid(cache_path: Path, data_mtime: float | None) -> bool:
+    """Check whether a cache file exists and is newer than the source data."""
     if data_mtime is None:
         return False
     if not cache_path.exists():
@@ -97,6 +101,7 @@ def _render_report(strategy: str, symbol: str, cache_path: Path) -> str:
 
 
 def _generate_and_store(strategy: str, symbol: str) -> None:
+    """Render a report and update the cache, cleaning up on missing data."""
     cache_path = _cache_file(strategy, symbol)
     try:
         _render_report(strategy, symbol, cache_path)
@@ -112,6 +117,7 @@ def _generate_and_store(strategy: str, symbol: str) -> None:
 
 
 def _schedule_refresh(strategy: str, symbol: str) -> None:
+    """Schedule an asynchronous refresh if one is not already queued."""
     key = (strategy, symbol)
     with _CACHE_LOCK:
         future = _PENDING_REFRESHES.get(key)
@@ -129,6 +135,7 @@ def _schedule_refresh(strategy: str, symbol: str) -> None:
 
 
 def get_report(strategy: str, symbol: str) -> str:
+    """Return a cached QuantStats report or generate it if missing/outdated."""
     data_path = Path(result_file_path(symbol, strategy))
     if not data_path.exists():
         raise NoDataAvailableError
@@ -162,6 +169,7 @@ def get_report(strategy: str, symbol: str) -> str:
 
 
 def preload_existing_reports() -> None:
+    """Warm the cache by precomputing reports for all available combinations."""
     combos = defaultdict(list)
     for symbol, strategy in get_available_results():
         combos[strategy].append(symbol)

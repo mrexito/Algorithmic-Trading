@@ -18,13 +18,13 @@ class BollingerStrategy(bt.Strategy):
     def next(self):
         """Enter long when price pierces the lower band and exit near the middle."""
         if self.order:
-            return  # Warte, bis bestehender Auftrag ausgeführt ist
+            return  # wait for existing order to finish
 
-        # Kaufsignal: Schlusskurs unter dem unteren Band
+        # Buy when the close falls below the lower band
         if not self.position and self.datas[0].close[0] < self.bbands.bot[0]:
             self.order = self.buy()
 
-        # Verkaufssignal: Schlusskurs über mittlerem Band (SMA)
+        # Sell/exit when the close rises above the middle band (SMA)
         elif self.position and self.datas[0].close[0] > self.bbands.mid[0]:
             self.order = self.close()
 
