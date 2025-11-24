@@ -1,9 +1,0 @@
-jupyterlab
-numpy
-pandas
-pandas-ta
-ta
-matplotlib
-tensorflow==2.9.2
-keras==2.9.0
-sklearn
