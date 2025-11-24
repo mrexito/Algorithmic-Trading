@@ -35,7 +35,10 @@ package "Dashboard (dashboard/*)" {
   component "Strategy Docs Loader\n(tab3 + docs)" as DocsLoader
 }
 
-folder "Strategy Docs\n(Projekt/my_trading_bot/docs/strategy_descriptions/*.md)" as Docs
+package "Documentation" {
+  component "Sphinx Docs\n(docs/source -> build)" as SphinxDocs
+  folder "Strategy Docs\n(Projekt/my_trading_bot/docs/strategy_descriptions/*.md)" as Docs
+}
 
 Config --> Runner : CAPITAL/\nCOMMISSION\nPREDEFINED_SYMBOLS
 
@@ -67,6 +70,10 @@ QSCache --> Results : read pickle data
 QSCache --> Quantstats : render HTML\ntearsheets
 QSCache --> Callbacks : serve cached\niframe content
 
+MarketAPI --> SphinxDocs : autodoc input
+Runner --> SphinxDocs : autodoc input
+DashApp --> SphinxDocs : autodoc input
+
 note right of DashDataLoader
   - Schedules bootstrap on app startup (schedule_bootstrap)
   - Persists last run to data/live_data/.bootstrap_state.json
@@ -79,6 +86,10 @@ end note
 
 note top of TS
   TimescaleDB connection configurable via ENV vars (TIMESCALE_URL, TS_TABLE)
+end note
+
+note top of SphinxDocs
+  sphinx-apidoc generates RST stubs from Projekt/my_trading_bot; make -C docs html/latex builds site
 end note
 
 @enduml
