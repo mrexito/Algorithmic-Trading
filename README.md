@@ -131,7 +131,7 @@ export TS_TABLE="ohlcv"
   1. Downloads the latest OHLCV data for the configured symbols via `market_data_api.fetch_yahoo`.
   2. Saves a CSV snapshot in `Projekt/my_trading_bot/data/live_data/`.
   3. Upserts the rows into the Timescale table (`TS_TABLE`).
-- Defaults now request one year of daily bars (`duration="1 Y"`, `bar-size="1 day"`); adjust the env vars above if you need a different horizon or granularity.
+- Defaults now request five years of daily bars (`duration="5 Y"`, `bar-size="1 day"`); adjust the env vars above if you need a different horizon or granularity.
 - At runtime dashboard callbacks read OHLCV data from TimescaleDB. If the DB is unreachable the app gracefully falls back to the static CSVs under `data/historical_prices/`.
 - The Yahoo fetch logic now lives solely in `data/market_data_api.py`; `data_handler.py` acts as a thin CLI wrapper so strategy code and the dashboard share identical normalization rules.
 - `market_data_api.fetch_yahoo` includes retry/backoff handling to mitigate transient yfinance hiccups before giving up.
