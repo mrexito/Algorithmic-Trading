@@ -20,9 +20,6 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-# Available strategies exposed to the UI (keep UI unchanged; we expand here)
-STRATEGY_LIST = ["Buy&Hold", "SMA(50/200)", "EMA(12/26)", "RSI(14)"]
-
 # Make sure repo root is importable (keeps other relative imports working)
 ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = ROOT.parent
@@ -485,39 +482,12 @@ def _load_px_from_csv(symbol: str) -> pd.Series:
 
 # --- Public helpers used by layouts/callbacks --------------------------------
 
-def get_available_results() -> List[Tuple[str, str]]:
-    """
-    Return list of (symbol, strategy) pairs for the UI dropdowns.
-
-    Primary source: TimescaleDB (distinct symbols in OHLCV table).
-    Fallback: infer symbols from CSVs in data/historical_prices when DB is missing/unreachable.
-    """
-    symbols: list[str] = []
-    # Try DB first
-    try:
-        eng = get_engine()
-        sql = text(f"SELECT DISTINCT symbol FROM {DEFAULT_TABLE} ORDER BY symbol;")
-        with eng.connect() as conn:
-            rows = conn.execute(sql).fetchall()
-        symbols = [str(r[0]).upper() for r in rows]
-    except Exception:
-        symbols = _list_symbols_on_disk()
-
-    # Pair each symbol with all strategies
-    return [(sym, strat) for sym in symbols for strat in STRATEGY_LIST]
-
-
 def load_returns(symbol: str, strategy: str) -> pd.Series:
     """
     Load/compute returns series for the given symbol & strategy from TimescaleDB.
 
-    Strategies:
-      - "Buy&Hold": close-to-close daily returns
-      - "SMA(50/200)": long when SMA(50) > SMA(200), flat otherwise
-      - "EMA(12/26)": long when EMA(12) > EMA(26), flat otherwise
-      - "RSI(14)": long when RSI<30 (simple oversold entry), flat otherwise
-
-    Notes:
+    Notes (DB-computed strategies):
+      * Built-in rule-based strategies are handled here; additional strategies are expected to be precomputed and stored in result files.
       * All returns are computed on daily last-close (business days).
       * Positions are applied with a one-day lag (next day open not available; this is a simple approximation).
     """
@@ -620,24 +590,40 @@ def result_file_path(symbol: str, strategy: str) -> str:
     return os.path.join(RESULT_DIR, f"{strategy}_{symbol}_returns.pkl")
 
 
+def _list_results_on_disk() -> list[Tuple[str, str]]:
+    """Return available (symbol, strategy) combos inferred from stored pickles."""
+    combos: set[Tuple[str, str]] = set()
+    result_dir = Path(RESULT_DIR)
+    if not result_dir.exists():
+        return []
+
+    for file_path in result_dir.glob("*_returns.pkl"):
+        stem = file_path.stem
+        if not stem.endswith("_returns"):
+            continue
+        body = stem[: -len("_returns")]
+        if "_" not in body:
+            continue
+        strategy, _, symbol_part = body.partition("_")
+        if not strategy or not symbol_part:
+            continue
+        combos.add((symbol_part.upper(), strategy))
+
+    return sorted(combos, key=lambda item: (item[0], item[1]))
+
+
 def get_available_results() -> List[Tuple[str, str]]:
     """
     Return list of (symbol, strategy) pairs for the UI dropdowns.
 
-    Primary source: TimescaleDB (distinct symbols in OHLCV table).
-    Fallback: cached CSVs (live/historical). All strategies are offered for each symbol.
+    Derived from stored backtest result files so only strategies with data
+    are exposed.
     """
-    symbols: list[str] = []
-    try:
-        eng = get_engine()
-        sql = text(f"SELECT DISTINCT symbol FROM {DEFAULT_TABLE} ORDER BY symbol;")
-        with eng.connect() as conn:
-            rows = conn.execute(sql).fetchall()
-        symbols = [str(r[0]).upper() for r in rows]
-    except Exception:
-        symbols = _list_symbols_on_disk()
+    # Pre-seed combos using on-disk backtest results (covers non-DB strategies).
+    combos: set[Tuple[str, str]] = set(_list_results_on_disk())
 
-    return [(sym, strat) for sym in symbols for strat in STRATEGY_LIST]
+    # Only expose strategies for which result files exist.
+    return sorted(combos, key=lambda item: (item[0], item[1]))
 
 
 def get_strategy_symbol_map() -> dict[str, list[str]]:
