@@ -13,7 +13,7 @@ from pathlib import Path
 import sys
 import threading
 import time
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Iterable, Tuple, Callable
 
 import numpy as np
 import pandas as pd
@@ -39,6 +39,19 @@ try:
 except (TypeError, ValueError):
     BOOTSTRAP_CACHE_TTL = 900
 BOOTSTRAP_PROVIDER = (os.environ.get("MARKET_BOOTSTRAP_PROVIDER", "yf").strip().lower() or "yf")
+STRATEGY_DIR = ROOT / "Projekt" / "my_trading_bot" / "strategies"
+
+# Strategy name mapping derived from the strategies/ folder
+_STRATEGY_NAME_MAP = {
+    "ai": "AI",
+    "bollinger": "BOLLINGER",
+    "dtw": "DTW",
+    "horizontal_pattern": "HORIZONTAL",
+    "macd": "MACD",
+    "rsi": "RSI",
+    "sma": "SMA",
+    "zigzag": "ZIGZAG",
+}
 
 # Lazily create the SQLAlchemy engine so import-time doesn't explode
 _engine: Engine | None = None
@@ -67,7 +80,7 @@ _bootstrap_state: Dict[str, object] = {
 }
 _bootstrap_warnings: list[str] = []
 _emitted_warnings: set[str] = set()
-BOOTSTRAP_DURATION = os.environ.get("MARKET_BOOTSTRAP_DURATION", "1 Y")
+BOOTSTRAP_DURATION = os.environ.get("MARKET_BOOTSTRAP_DURATION", "5 Y")
 BOOTSTRAP_BAR_SIZE = os.environ.get("MARKET_BOOTSTRAP_BAR_SIZE", "1 day")
 
 
@@ -135,6 +148,19 @@ def _load_bootstrap_symbols() -> Tuple[Tuple[str, ...], list[str], str]:
 
 BOOTSTRAP_SYMBOLS, _bootstrap_warning_list, BOOTSTRAP_SOURCE = _load_bootstrap_symbols()
 _bootstrap_warnings.extend(_bootstrap_warning_list)
+
+
+@lru_cache(maxsize=1)
+def get_strategy_names() -> Tuple[str, ...]:
+    """Discover available strategies from the strategies folder plus Buy&Hold baseline."""
+    names: set[str] = {"BUY&HOLD"}
+    if STRATEGY_DIR.exists():
+        for path in STRATEGY_DIR.glob("*_strategy.py"):
+            stem = path.stem
+            key = stem.replace("_strategy", "")
+            name = _STRATEGY_NAME_MAP.get(key, key.upper())
+            names.add(name)
+    return tuple(sorted(names))
 
 
 def _load_cached_run() -> dict[str, object]:
@@ -480,14 +506,260 @@ def _load_px_from_csv(symbol: str) -> pd.Series:
     s.name = symbol.upper()
     return s
 
+
+def _compute_rsi(px: pd.Series, window: int = 14) -> pd.Series:
+    """Compute classic Wilder RSI."""
+    delta = px.diff()
+    gain = delta.clip(lower=0).rolling(window, min_periods=window).mean()
+    loss = (-delta.clip(upper=0)).rolling(window, min_periods=window).mean()
+    rs = gain / loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+
+def _positions_rsi(rsi: pd.Series, lower: float = 30, upper: float = 70) -> pd.Series:
+    """Stateful position series for RSI thresholds."""
+    pos = pd.Series(0, index=rsi.index, dtype=float)
+    holding = 0.0
+    for ts, value in rsi.items():
+        if value < lower:
+            holding = 1.0
+        elif value > upper:
+            holding = 0.0
+        pos.loc[ts] = holding
+    return pos
+
+
+def _positions_bollinger(px: pd.Series, period: int = 20, dev: float = 2.0) -> pd.Series:
+    mid = px.rolling(period, min_periods=period).mean()
+    std = px.rolling(period, min_periods=period).std()
+    lower = mid - dev * std
+    pos = pd.Series(0, index=px.index, dtype=float)
+    holding = 0.0
+    for ts, price in px.items():
+        mid_val = mid.loc[ts]
+        lower_val = lower.loc[ts]
+        if np.isnan(mid_val) or np.isnan(lower_val):
+            pos.loc[ts] = holding
+            continue
+        if holding == 0 and price < lower_val:
+            holding = 1.0
+        elif holding == 1 and price > mid_val:
+            holding = 0.0
+        pos.loc[ts] = holding
+    return pos
+
+
+def _positions_zigzag(px: pd.Series, perc: float = 5.0) -> pd.Series:
+    pos = pd.Series(0, index=px.index, dtype=float)
+    if px.empty:
+        return pos
+    last_pivot = None
+    direction = None
+    holding = 0.0
+    for ts, price in px.items():
+        if last_pivot is None:
+            last_pivot = price
+            pos.loc[ts] = holding
+            continue
+        change_pct = (price - last_pivot) / last_pivot * 100
+        if holding == 0:
+            if change_pct >= perc:
+                holding = 1.0
+                last_pivot = price
+                direction = "up"
+            elif change_pct <= -perc:
+                holding = -1.0
+                last_pivot = price
+                direction = "down"
+        else:
+            if direction == "up" and change_pct <= -perc:
+                holding = 0.0
+                last_pivot = price
+                direction = "down"
+            elif direction == "down" and change_pct >= perc:
+                holding = 0.0
+                last_pivot = price
+                direction = "up"
+        pos.loc[ts] = holding
+    return pos
+
+
+def _positions_horizontal(px: pd.Series) -> pd.Series:
+    lookback = 20
+    stop_loss = 0.03
+    take_profit = 0.05
+    rsi = _compute_rsi(px)
+    ma_short = px.rolling(10, min_periods=10).mean()
+    ma_long = px.rolling(50, min_periods=50).mean()
+    lowest = px.rolling(lookback, min_periods=lookback).min()
+
+    pos = pd.Series(0, index=px.index, dtype=float)
+    holding = 0.0
+    buy_price: float | None = None
+    for ts, price in px.items():
+        rsi_v = rsi.loc[ts]
+        low_v = lowest.loc[ts]
+        ma_s = ma_short.loc[ts]
+        ma_l = ma_long.loc[ts]
+        if holding == 0:
+            if (
+                not np.isnan(rsi_v)
+                and not np.isnan(low_v)
+                and not np.isnan(ma_s)
+                and not np.isnan(ma_l)
+                and rsi_v < 35
+                and price > low_v * 1.02
+                and ma_s > ma_l
+            ):
+                holding = 1.0
+                buy_price = price
+        else:
+            if buy_price is not None:
+                tp = buy_price * (1 + take_profit)
+                sl = buy_price * (1 - stop_loss)
+                if price >= tp or price <= sl:
+                    holding = 0.0
+                    buy_price = None
+        pos.loc[ts] = holding
+    return pos
+
+
+def _positions_macd(px: pd.Series) -> pd.Series:
+    ema_fast = px.ewm(span=12, adjust=False).mean()
+    ema_slow = px.ewm(span=26, adjust=False).mean()
+    macd = ema_fast - ema_slow
+    signal = macd.ewm(span=9, adjust=False).mean()
+    hist = macd - signal
+    return (hist > 0).astype(float)
+
+
+def _positions_dtw(px: pd.Series, window: int = 20, threshold: float = 5.0) -> pd.Series:
+    try:
+        from dtaidistance import dtw  # type: ignore
+    except Exception:
+        return pd.Series(0, index=px.index, dtype=float)
+
+    pos = pd.Series(0, index=px.index, dtype=float)
+    holding = 0.0
+    for i in range(len(px)):
+        if i < window:
+            continue
+        recent = px.iloc[i - window + 1 : i + 1].to_numpy()
+        pattern_up = np.linspace(recent[0], recent[-1], num=window)
+        pattern_down = np.linspace(recent[-1], recent[0], num=window)
+        dist_up = dtw.distance(recent, pattern_up)
+        dist_down = dtw.distance(recent, pattern_down)
+
+        if holding == 0:
+            if dist_up < threshold:
+                holding = 1.0
+            elif dist_down < threshold:
+                holding = -1.0
+        else:
+            if dist_up > threshold * 2 and dist_down > threshold * 2:
+                holding = 0.0
+        pos.iloc[i] = holding
+    return pos
+
+
+def _positions_ai(px: pd.Series) -> pd.Series:
+    try:
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.preprocessing import MinMaxScaler
+    except Exception:
+        return pd.Series(0, index=px.index, dtype=float)
+
+    train_period = 200
+    threshold = 0.55
+    rsi = _compute_rsi(px)
+    sma = px.rolling(14, min_periods=14).mean()
+    pos = pd.Series(0, index=px.index, dtype=float)
+    if len(px) < train_period + 1:
+        return pos
+
+    model = LogisticRegression(solver="liblinear")
+    scaler = MinMaxScaler()
+    holding = 0.0
+
+    for i in range(train_period, len(px)):
+        try:
+            window = slice(i - train_period, i)
+            window_df = pd.DataFrame({
+                "rsi": rsi.iloc[window],
+                "sma": sma.iloc[window],
+                "target": (px.iloc[window].shift(-1) > px.iloc[window]).astype(int),
+            }).dropna()
+
+            # Align lengths by trimming the last row where target has no future value
+            window_df = window_df.iloc[:-1]
+
+            if len(window_df) < 10:
+                pos.iloc[i] = holding
+                continue
+            feats_scaled = scaler.fit_transform(window_df[["rsi", "sma"]].to_numpy())
+            model.fit(feats_scaled, window_df["target"].to_numpy())
+            current_feat = np.array([[rsi.iloc[i], sma.iloc[i]]])
+            if np.isnan(current_feat).any():
+                pos.iloc[i] = holding
+                continue
+            current_scaled = scaler.transform(current_feat)
+            prob = model.predict_proba(current_scaled)[0, 1]
+            if holding == 0 and prob > threshold:
+                holding = 1.0
+            elif holding == 1 and prob < 1 - threshold:
+                holding = 0.0
+            pos.iloc[i] = holding
+        except Exception:
+            pos.iloc[i] = holding
+    return pos
+
+
+def _strategy_returns(px: pd.Series, strategy: str) -> pd.Series:
+    """Compute daily returns according to the selected strategy."""
+    rets = px.pct_change().dropna()
+    strat = (strategy or "BUY&HOLD").strip().upper()
+
+    if strat in {"BUY&HOLD", "BUY AND HOLD", "BUYHOLD"}:
+        return rets
+    if strat == "SMA":
+        sma = px.rolling(10, min_periods=10).mean()
+        pos = (px > sma).astype(float).shift(1).reindex(rets.index).fillna(0)
+        return (rets * pos).dropna()
+    if strat == "MACD":
+        pos = _positions_macd(px).shift(1).reindex(rets.index).fillna(0)
+        return (rets * pos).dropna()
+    if strat == "RSI":
+        rsi_pos = _positions_rsi(_compute_rsi(px))
+        pos = rsi_pos.shift(1).reindex(rets.index).fillna(0)
+        return (rets * pos).dropna()
+    if strat == "BOLLINGER":
+        pos = _positions_bollinger(px).shift(1).reindex(rets.index).fillna(0)
+        return (rets * pos).dropna()
+    if strat == "ZIGZAG":
+        pos = _positions_zigzag(px).shift(1).reindex(rets.index).fillna(0)
+        return (rets * pos).dropna()
+    if strat == "HORIZONTAL":
+        pos = _positions_horizontal(px).shift(1).reindex(rets.index).fillna(0)
+        return (rets * pos).dropna()
+    if strat == "DTW":
+        pos = _positions_dtw(px).shift(1).reindex(rets.index).fillna(0)
+        return (rets * pos).dropna()
+    if strat == "AI":
+        pos = _positions_ai(px).shift(1).reindex(rets.index).fillna(0)
+        return (rets * pos).dropna()
+
+    # Fallback: buy & hold
+    return rets
+
 # --- Public helpers used by layouts/callbacks --------------------------------
 
 def load_returns(symbol: str, strategy: str) -> pd.Series:
     """
     Load/compute returns series for the given symbol & strategy from TimescaleDB.
 
-    Notes (DB-computed strategies):
-      * Built-in rule-based strategies are handled here; additional strategies are expected to be precomputed and stored in result files.
+    Notes:
+      * Strategies are derived from the strategies/ folder; Buy&Hold remains the baseline.
       * All returns are computed on daily last-close (business days).
       * Positions are applied with a one-day lag (next day open not available; this is a simple approximation).
     """
@@ -523,38 +795,8 @@ def load_returns(symbol: str, strategy: str) -> pd.Series:
     if px is None or px.empty:
         return pd.Series(dtype="float64")
 
-    rets = px.pct_change().dropna()
-
-    # --- Strategy routing ---
-    strat = (strategy or "Buy&Hold").strip()
-
-    if strat == "Buy&Hold":
-        out = rets.copy()
-    elif strat.startswith("SMA"):
-        fast, slow = 50, 200
-        sma_fast = px.rolling(fast, min_periods=fast).mean()
-        sma_slow = px.rolling(slow, min_periods=slow).mean()
-        pos = (sma_fast > sma_slow).astype(int).shift(1).reindex(rets.index).fillna(0)
-        out = (rets * pos).dropna()
-    elif strat.startswith("EMA"):
-        fast, slow = 12, 26
-        ema_fast = px.ewm(span=fast, adjust=False).mean()
-        ema_slow = px.ewm(span=slow, adjust=False).mean()
-        pos = (ema_fast > ema_slow).astype(int).shift(1).reindex(rets.index).fillna(0)
-        out = (rets * pos).dropna()
-    elif strat.startswith("RSI"):
-        window = 14
-        delta = px.diff()
-        gain = delta.clip(lower=0).rolling(window, min_periods=window).mean()
-        loss = (-delta.clip(upper=0)).rolling(window, min_periods=window).mean()
-        rs = gain / loss.replace(0, pd.NA)
-        rsi = 100 - (100 / (1 + rs))
-        pos = (rsi < 30).astype(int).shift(1).reindex(rets.index).fillna(0)
-        out = (rets * pos).dropna()
-    else:
-        out = rets.copy()
-
-    out.name = f"{symbol}-{strat}"
+    out = _strategy_returns(px, strategy)
+    out.name = f"{symbol}-{(strategy or 'BUY&HOLD').strip()}"
     return out
 
 
@@ -616,13 +858,27 @@ def get_available_results() -> List[Tuple[str, str]]:
     """
     Return list of (symbol, strategy) pairs for the UI dropdowns.
 
-    Derived from stored backtest result files so only strategies with data
-    are exposed.
+    Combines discovered strategies with available symbols (DB or CSV fallback),
+    and includes any precomputed result pickles.
     """
-    # Pre-seed combos using on-disk backtest results (covers non-DB strategies).
     combos: set[Tuple[str, str]] = set(_list_results_on_disk())
 
-    # Only expose strategies for which result files exist.
+    strategies = get_strategy_names()
+
+    symbols: list[str] = []
+    try:
+        eng = get_engine()
+        sql = text(f"SELECT DISTINCT symbol FROM {DEFAULT_TABLE} ORDER BY symbol;")
+        with eng.connect() as conn:
+            rows = conn.execute(sql).fetchall()
+        symbols = [str(r[0]).upper() for r in rows]
+    except Exception:
+        symbols = _list_symbols_on_disk()
+
+    for sym in symbols:
+        for strat in strategies:
+            combos.add((sym, strat))
+
     return sorted(combos, key=lambda item: (item[0], item[1]))
 
 

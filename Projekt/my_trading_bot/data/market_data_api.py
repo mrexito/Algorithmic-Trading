@@ -41,6 +41,11 @@ def _map_yf_params(duration: str, bar_size: str) -> Tuple[str, str]:
         "3 mo": "3mo",
         "6 mo": "6mo",
         "1 y": "1y",
+        "5 y": "5y",
+        "5 yr": "5y",
+        "5 yrs": "5y",
+        "5 year": "5y",
+        "5 years": "5y",
     }
     interval_map = {
         "1 min": "1m",
@@ -53,7 +58,8 @@ def _map_yf_params(duration: str, bar_size: str) -> Tuple[str, str]:
     }
 
     period = period_map.get(duration, "5d")
-    interval = interval_map.get(bar_size, "5m")
+    # Default to daily bars for multi-year fetches so Yahoo accepts the request.
+    interval = interval_map.get(bar_size, "1d")
     return period, interval
 
 # --- Public API ------------------------------------------------------------

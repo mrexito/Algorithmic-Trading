@@ -124,7 +124,22 @@ def update_overview_tab(
         return dash.no_update, adjusted
 
     if not selected_symbols or not selected_strategies:
-        return dash.no_update, dash.no_update
+        empty_fig = go.Figure()
+        empty_fig.update_layout(
+            template="plotly_white",
+            xaxis={"visible": False},
+            yaxis={"visible": False},
+            annotations=[
+                {
+                    "text": "Bitte wähle mindestens ein Symbol und eine Strategie.",
+                    "xref": "paper",
+                    "yref": "paper",
+                    "showarrow": False,
+                    "font": {"size": 16, "color": "#6b7280"},
+                }
+            ],
+        )
+        return html.Div(className="empty-state"), empty_fig
 
     table_rows = []
     figure = go.Figure()
